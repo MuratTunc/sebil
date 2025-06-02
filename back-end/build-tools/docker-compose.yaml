@@ -1,0 +1,75 @@
+services:
+  # BROKER Service
+  broker-service:
+    build:
+      context: ./../broker-service
+      dockerfile: ./../broker-service/docker/broker-service.dockerfile
+    image: broker-service
+    container_name: broker-service
+    restart: always
+    ports:
+      - "${BROKER_SERVICE_PORT}:${BROKER_SERVICE_PORT}"   
+    env_file:
+      - .env
+    networks:
+      - app-network
+
+  # AUTHENTICATION Service
+  authentication-service:
+    build:
+      context: ./../authentication-service
+      dockerfile: ./../authentication-service/docker/authentication-service.dockerfile
+    image: authentication-service
+    container_name: authentication-service
+    restart: always
+    ports:
+      - "${AUTHENTICATION_SERVICE_PORT}:${AUTHENTICATION_SERVICE_PORT}"   
+    env_file:
+      - .env
+    networks:
+      - app-network    
+
+
+
+  # PROMETHEUS Service
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    networks:
+      - app-network
+
+
+
+  # Authentication Database Definition
+  authentication-db:
+    image: postgres:15  # Use the official PostgreSQL image version 15
+    container_name: authentication-db  # Container name for user database
+    restart: always  # Restart the container automatically if it stops
+    environment:
+      POSTGRES_USER: ${AUTHENTICATION_POSTGRES_DB_USER}  # PostgreSQL username
+      POSTGRES_PASSWORD: ${AUTHENTICATION_POSTGRES_DB_PASSWORD}  # PostgreSQL password
+      POSTGRES_DB: ${AUTHENTICATION_POSTGRES_DB_NAME}  # Name of the PostgreSQL database
+    ports:
+      - "${AUTHENTICATION_POSTGRES_DB_PORT}:5432"  # Map PostgreSQL port from the host to the container
+    healthcheck:  # Health check to ensure PostgreSQL is ready before starting user service
+      test: ["CMD", "pg_isready", "-U", "${AUTHENTICATION_POSTGRES_DB_USER}", "-d", "${AUTHENTICATION_POSTGRES_DB_NAME}"]
+      interval: 10s  # Interval between checks
+      timeout: 5s  # Timeout duration
+      retries: 5  # Number of retries before considering the service as unhealthy
+    volumes:
+      - authentication:/var/lib/postgresql/data  # Persistent storage for PostgreSQL data    
+
+networks:
+  app-network:
+    driver: bridge
+
+
+volumes:
+  authentication:  # Define volume for authentication database data

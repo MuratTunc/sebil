@@ -42,6 +42,7 @@ func (r *Routes) Routes() http.Handler {
 
 func (r *Routes) publicRoutes(mux *chi.Mux) {
 	mux.Route("/auth", func(mux chi.Router) {
+
 		mux.Get("/health", r.Handler.HealthCheckHandler)
 		// Add other /auth related routes here
 	})

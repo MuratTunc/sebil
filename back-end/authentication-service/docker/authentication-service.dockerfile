@@ -1,29 +1,35 @@
-# Use a Golang image to build the binary
+# Stage 1: Build the Go binary
 FROM golang:1.23-alpine AS builder
 
-# Set the working directory inside the container
+# Set the working directory inside the builder container
 WORKDIR /app
 
-# Copy Go module files first for caching dependencies
+# Copy Go module files first (for better caching)
 COPY go.mod go.sum ./
 
-# Download dependencies
+# Download Go module dependencies
 RUN go mod download
 
-# Copy the Go source code
+# Copy the source code (including SQL files)
 COPY src /app/src
 
-# Build the Go application as a static binary (Make sure the binary is generated in the bin folder)
+# Build the Go application binary
 RUN go build -o /app/bin/authentication-serviceBinary ./src/cmd/
 
-# Final lightweight image
+# Stage 2: Final minimal image
 FROM alpine:latest
 
-# Set working directory for the final image
+# Set working directory in final image
 WORKDIR /app
 
-# Copy the compiled binary from the builder stage
+# Copy the compiled Go binary from the builder stage
 COPY --from=builder /app/bin/authentication-serviceBinary .
 
-# Run the binary
+# Copy the SQL directory for initialization
+COPY --from=builder /app/src/sql /app/sql
+
+# ✅ Set the ENV variable so Go app can read the SQL init script path
+ENV AUTHENTICATION_INIT_SQL_FILE_PATH=/app/sql/init_users_table.sql
+
+# Default command to run the binary
 CMD ["/app/authentication-serviceBinary"]

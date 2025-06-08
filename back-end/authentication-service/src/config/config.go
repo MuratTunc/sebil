@@ -13,17 +13,18 @@ import (
 const FixedDBPort = "5432"
 
 type Config struct {
-	DBHost      string
-	DBUser      string
-	DBPassword  string
-	DBName      string
-	ServicePort string
-	ServiceName string
-	DBPort      string
-	EnvPrefix   string
-	UseDB       bool // Flag to determine if DB config is needed
-	DB          *gorm.DB
-	Logger      *logger.Logger
+	DBHost          string
+	DBUser          string
+	DBPassword      string
+	DBName          string
+	ServicePort     string
+	ServiceName     string
+	DBPort          string
+	EnvPrefix       string
+	InitSQLFilePath string
+	UseDB           bool // Flag to determine if DB config is needed
+	DB              *gorm.DB
+	Logger          *logger.Logger
 }
 
 // NewConfig initializes the configuration
@@ -31,12 +32,13 @@ func NewConfig(envPrefix string) *Config {
 	useDB := strings.ToLower(os.Getenv(fmt.Sprintf("%s_USE_DB", envPrefix))) == "true"
 
 	cfg := &Config{
-		EnvPrefix:   envPrefix,
-		ServicePort: os.Getenv(fmt.Sprintf("%s_SERVICE_PORT", envPrefix)),
-		ServiceName: os.Getenv(fmt.Sprintf("%s_SERVICE_NAME", envPrefix)),
-		UseDB:       useDB,
-		DBPort:      FixedDBPort, // fixed port inside the container
-		Logger:      logger.NewLogger(logger.INFO),
+		EnvPrefix:       envPrefix,
+		ServicePort:     os.Getenv(fmt.Sprintf("%s_SERVICE_PORT", envPrefix)),
+		ServiceName:     os.Getenv(fmt.Sprintf("%s_SERVICE_NAME", envPrefix)),
+		InitSQLFilePath: os.Getenv(fmt.Sprintf("%s_INIT_SQL_FILE_PATH", envPrefix)),
+		UseDB:           useDB,
+		DBPort:          FixedDBPort, // fixed port inside the container
+		Logger:          logger.NewLogger(logger.INFO),
 	}
 
 	if useDB {
@@ -56,16 +58,17 @@ func NewConfig(envPrefix string) *Config {
 
 func (c *Config) printEnvVariables() {
 	c.Logger.Info(fmt.Sprintf("🔧 LOADED SERVICE ENVIRONMENTS - %s", c.EnvPrefix))
-	c.Logger.Info("🔧ServicePort: " + c.ServicePort)
-	c.Logger.Info("🔧ServiceName: " + c.ServiceName)
-	c.Logger.Info(fmt.Sprintf("🔧UseDB: %v", c.UseDB))
+	c.Logger.Info("🔧 ServicePort: " + c.ServicePort)
+	c.Logger.Info("🔧 ServiceName: " + c.ServiceName)
+	c.Logger.Info(fmt.Sprintf("🔧 UseDB: %v", c.UseDB))
 
 	if c.UseDB {
-		c.Logger.Info("🔧DBHost: " + c.DBHost)
-		c.Logger.Info("🔧DBUser: " + c.DBUser)
-		c.Logger.Info("🔧DBPassword: " + c.DBPassword)
-		c.Logger.Info("🔧DBName: " + c.DBName)
-		c.Logger.Info("🔧DBPort: " + c.DBPort)
+		c.Logger.Info("🔧 DBHost: " + c.DBHost)
+		c.Logger.Info("🔧 DBUser: " + c.DBUser)
+		c.Logger.Info("🔧 DBPassword: " + c.DBPassword)
+		c.Logger.Info("🔧 DBName: " + c.DBName)
+		c.Logger.Info("🔧 DBPort: " + c.DBPort)
+		c.Logger.Info("🔧 InitSQLFilePath: " + c.InitSQLFilePath)
 	}
 }
 
@@ -84,8 +87,14 @@ func (c *Config) validateEnvVars() {
 		}
 	}
 
+	if c.InitSQLFilePath == "" {
+		c.Logger.Error("❌ Missing INIT_SQL_FILE_PATH environment variable")
+		missing = true
+	}
+
 	if missing {
 		c.Logger.Error("❌ Exiting due to missing environment variables.")
 		os.Exit(1)
 	}
+
 }

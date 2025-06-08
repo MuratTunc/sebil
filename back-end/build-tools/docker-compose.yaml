@@ -22,13 +22,15 @@ services:
     image: authentication-service
     container_name: authentication-service
     restart: always
+    depends_on:
+      authentication-db:
+        condition: service_healthy
     ports:
       - "${AUTHENTICATION_SERVICE_PORT}:${AUTHENTICATION_SERVICE_PORT}"   
     env_file:
       - .env
     networks:
-      - app-network    
-
+      - app-network 
 
 
   # PROMETHEUS Service
@@ -64,7 +66,9 @@ services:
       timeout: 5s  # Timeout duration
       retries: 5  # Number of retries before considering the service as unhealthy
     volumes:
-      - authentication:/var/lib/postgresql/data  # Persistent storage for PostgreSQL data    
+      - authentication:/var/lib/postgresql/data  # Persistent storage for PostgreSQL data
+    networks:
+      - app-network
 
 networks:
   app-network:

@@ -54,7 +54,7 @@ func ConnectToDB(cfg *config.Config) (*sql.DB, error) {
 // runInitSQLScript reads the SQL file and executes its content to initialize the database.
 func runInitSQLScript(cfg *config.Config) error {
 	// Read the SQL file content
-	sqlFileContent, err := ioutil.ReadFile("back-end/authentication-service/src/sql/init_users_table.sql")
+	sqlFileContent, err := ioutil.ReadFile(cfg.InitSQLFilePath)
 	if err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ Error reading SQL file: %v", err))
 		return err

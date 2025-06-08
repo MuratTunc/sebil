@@ -33,7 +33,7 @@ func (h *Handler) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 
 	// If everything is fine, return success
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Broker Service is up!"))
+	w.Write([]byte("Authentication Service is up!"))
 
 	// Calculate the time taken for the request to be processed
 	duration := time.Since(startTime)

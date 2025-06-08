@@ -2,11 +2,10 @@ package config
 
 import (
 	"authentication-service/src/logger"
+	"database/sql"
 	"fmt"
 	"os"
 	"strings"
-
-	"gorm.io/gorm"
 )
 
 // Set DBPort explicitly to 5432 inside the container
@@ -23,7 +22,7 @@ type Config struct {
 	EnvPrefix       string
 	InitSQLFilePath string
 	UseDB           bool // Flag to determine if DB config is needed
-	DB              *gorm.DB
+	DB              *sql.DB
 	Logger          *logger.Logger
 }
 

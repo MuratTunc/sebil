@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"authentication-service/src/config"
+	"authentication-service/src/logger"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
 )
@@ -14,33 +15,26 @@ import (
 var DB *sql.DB
 
 func ConnectToDB(cfg *config.Config) (*sql.DB, error) {
-	// Construct the PostgreSQL connection string
+	// Construct DSN once
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
 
 	var err error
-
-	// Retry logic: Try connecting 10 times with a 5-second delay
-	for i := 1; i <= 10; i++ {
-		DB, err = sql.Open("postgres", dsn)
-		if err == nil {
-			// Try pinging the DB to ensure it's reachable
-			err = DB.Ping()
-			if err == nil {
-				cfg.Logger.Info("✅ DATABASE connection success!")
-				break
-			}
-		}
-		cfg.Logger.Info(fmt.Sprintf("⏳ Attempt %d: Waiting for database to be ready...\n", i))
-		time.Sleep(5 * time.Second)
-	}
-
+	DB, err = sql.Open("postgres", dsn)
 	if err != nil {
-		cfg.Logger.Error(fmt.Sprintf("❌ DATABASE ERROR: Failed to connect to database after retries: %v", err))
+		cfg.Logger.Error(fmt.Sprintf("❌ Failed to open DB connection: %v", err))
 		return nil, err
 	}
 
-	// Run the SQL script to initialize the database (create users table)
+	// Use retry helper to ping DB with retries
+	err = pingWithRetry(DB, cfg.Logger, 10, 5*time.Second)
+	if err != nil {
+		cfg.Logger.Error(fmt.Sprintf("❌ Failed to ping DB after retries: %v", err))
+		return nil, err
+	}
+
+	cfg.Logger.Info("✅ DATABASE connection success!")
+
 	err = runInitSQLScript(cfg)
 	if err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ DATABASE ERROR: Failed to run initialization SQL script: %v", err))
@@ -51,16 +45,26 @@ func ConnectToDB(cfg *config.Config) (*sql.DB, error) {
 	return DB, nil
 }
 
-// runInitSQLScript reads the SQL file and executes its content to initialize the database.
+func pingWithRetry(db *sql.DB, logger *logger.Logger, maxAttempts int, delay time.Duration) error {
+	var err error
+	for i := 1; i <= maxAttempts; i++ {
+		err = db.Ping()
+		if err == nil {
+			return nil
+		}
+		logger.Info(fmt.Sprintf("⏳ Attempt %d/%d: Waiting for database to be ready... error: %v", i, maxAttempts, err))
+		time.Sleep(delay)
+	}
+	return err
+}
+
 func runInitSQLScript(cfg *config.Config) error {
-	// Read the SQL file content
 	sqlFileContent, err := ioutil.ReadFile(cfg.InitSQLFilePath)
 	if err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ Error reading SQL file: %v", err))
 		return err
 	}
 
-	// Execute the SQL content
 	_, err = DB.Exec(string(sqlFileContent))
 	if err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ Error executing SQL: %v", err))

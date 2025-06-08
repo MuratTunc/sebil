@@ -1,4 +1,24 @@
 # sebil
+``` bash
+
+                [ .env file ]
+                    ↓
+             [ docker-compose.yml ]
+                    ↓
+           ┌----------------------┐
+           |     Build Phase      |
+           |----------------------|
+           | 1. Read Dockerfile   |
+           | 2. Build Go binary   |
+           | 3. Package image     |
+           └----------------------┘
+                    ↓
+         [ Docker Image per service ]
+                    ↓
+         [ docker-compose up --build ]
+                    ↓
+         [ Containers running binaries ]
+```
 
 ## Authentication service
 

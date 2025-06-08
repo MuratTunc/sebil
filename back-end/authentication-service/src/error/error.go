@@ -19,4 +19,6 @@ const (
 	// Server/Internal Errors
 	ErrInternalServer = "Internal server error"
 	ErrServiceDown    = "Dependent service is currently unavailable"
+	ErrDatabaseInsert = "Could not insert bew user to DATABASE"
+	ErrDatabaseQuery  = "In CheckUserExists function DatabaseQuery error"
 )

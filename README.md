@@ -67,3 +67,14 @@ Body: { mailAddress, password }
 | `Admin`             | Full access: manage users, system settings, view/edit all data               |
 | `Sales Representative` | Access customer info, update leads/orders, generate sales reports            |
 | `Customer`          | View own profile/orders, update account settings, limited access to features |
+
+
+# Integration tests
+
+```bash
+✅ Register user using global variables
+
+✅ Fetch last user and verify fields
+
+✅ Delete user cleanly using the username
+```

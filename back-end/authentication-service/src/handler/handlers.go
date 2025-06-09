@@ -105,3 +105,39 @@ func (h *Handler) GetLastUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Last user fetched successfully in " + time.Since(startTime).String())
 }
+
+func (h *Handler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		http.Error(w, "Missing 'username' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	query := `DELETE FROM users WHERE username = $1`
+	result, err := h.App.DB.Exec(query, username)
+	if err != nil {
+		logger.Error("Failed to delete user: " + err.Error())
+		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		logger.Error("Failed to get rows affected: " + err.Error())
+		http.Error(w, "Could not confirm deletion", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("User deleted successfully"))
+
+	logger.Info("User '" + username + "' deleted successfully in " + time.Since(startTime).String())
+}

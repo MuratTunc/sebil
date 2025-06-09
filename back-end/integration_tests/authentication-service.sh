@@ -9,7 +9,6 @@ else
   exit 1
 fi
 
-export PGPASSWORD=$AUTHENTICATION_DB_PASSWORD
 
 # Install jq (JSON parsing utility) if not already installed
 if ! command -v jq &> /dev/null
@@ -31,11 +30,22 @@ test_end() {
     echo -e "********************************************************************"
 }
 
+# Global test user parameters
+TEST_USERNAME="testuser"
+TEST_MAIL_ADDRESS="testuser@example.com"
+TEST_PASSWORD="TestPassword123!"
+TEST_ROLE="Sales Representative"
+TEST_PHONE_NUMBER="+1234567890"
+TEST_LANGUAGE="en"
+
+
+
 # Define API URLs
 BASE_URL="http://localhost:$AUTHENTICATION_SERVICE_PORT"
 HEALTH_CHECK_URL="$BASE_URL/auth/health"
 REGISTER_URL="$BASE_URL/auth/register"
-LAST_USER_URL="$BASE_URL/auth/last-user"   # Added last-user endpoint URL
+LAST_USER_URL="$BASE_URL/auth/last-user"
+DELETE_USER_URL="$BASE_URL/auth/delete-user"
 
 health_check() {
   echo "===>TEST END POINT--->HEALTH CHECK"
@@ -70,14 +80,17 @@ register_user_test() {
   echo "===>TEST END POINT--->REGISTER NEW USER"
   echo
 
-  local payload='{
-    "username": "testuser",
-    "mail_address": "testuser@example.com",
-    "password": "TestPassword123!",
-    "role": "Sales Representative",
-    "phone_number": "+1234567890",
-    "language_preference": "en"
-  }'
+  local payload=$(cat <<EOF
+{
+  "username": "$TEST_USERNAME",
+  "mail_address": "$TEST_MAIL_ADDRESS",
+  "password": "$TEST_PASSWORD",
+  "role": "$TEST_ROLE",
+  "phone_number": "$TEST_PHONE_NUMBER",
+  "language_preference": "$TEST_LANGUAGE"
+}
+EOF
+)
 
   echo "REQUEST URL: $REGISTER_URL"
   echo "REQUEST TYPE: POST"
@@ -124,34 +137,57 @@ last_user_test() {
     exit 1
   fi
 
-  # Expected values from registration payload (reuse or hardcode here)
-  EXPECTED_USERNAME="testuser"
-  EXPECTED_MAIL_ADDRESS="testuser@example.com"
-  EXPECTED_ROLE="Sales Representative"
 
-  # Parse the returned JSON values with jq
   ACTUAL_USERNAME=$(echo "$HTTP_BODY" | jq -r '.username')
   ACTUAL_MAIL_ADDRESS=$(echo "$HTTP_BODY" | jq -r '.mail_address')
   ACTUAL_ROLE=$(echo "$HTTP_BODY" | jq -r '.role')
 
-  # Compare expected and actual values
-  if [[ "$ACTUAL_USERNAME" == "$EXPECTED_USERNAME" && \
-        "$ACTUAL_MAIL_ADDRESS" == "$EXPECTED_MAIL_ADDRESS" && \
-        "$ACTUAL_ROLE" == "$EXPECTED_ROLE" ]]; then
+  if [[ "$ACTUAL_USERNAME" == "$TEST_USERNAME" && \
+        "$ACTUAL_MAIL_ADDRESS" == "$TEST_MAIL_ADDRESS" && \
+        "$ACTUAL_ROLE" == "$TEST_ROLE" ]]; then
     echo "✅ Last user data matches the registered user!"
   else
     echo "❌ Last user data does NOT match the registered user!"
-    echo "Expected username: $EXPECTED_USERNAME, got: $ACTUAL_USERNAME"
-    echo "Expected mail_address: $EXPECTED_MAIL_ADDRESS, got: $ACTUAL_MAIL_ADDRESS"
-    echo "Expected role: $EXPECTED_ROLE, got: $ACTUAL_ROLE"
+    echo "Expected username: $TEST_USERNAME, got: $ACTUAL_USERNAME"
+    echo "Expected mail_address: $TEST_MAIL_ADDRESS, got: $ACTUAL_MAIL_ADDRESS"
+    echo "Expected role: $TEST_ROLE, got: $ACTUAL_ROLE"
+    exit 1
   fi
 
   echo
 }
 
+delete_user_test() {
+  echo "===>TEST END POINT--->DELETE USER"
+  echo
 
+  DELETE_USERNAME="$TEST_USERNAME"
+  REQUEST_URL="$DELETE_USER_URL?username=$DELETE_USERNAME"
+  echo "REQUEST URL: $REQUEST_URL"
+  echo "REQUEST TYPE: DELETE"
+
+  DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE "$REQUEST_URL")
+
+  HTTP_BODY=$(echo "$DELETE_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$DELETE_RESPONSE" | tail -n1)
+
+  echo "Delete User Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ User '$DELETE_USERNAME' deleted successfully"
+  else
+    echo "❌ Failed to delete user with status code $HTTP_STATUS. Response: $HTTP_BODY"
+    exit 1
+  fi
+
+  echo
+}
+
+# Run tests
 test_start
 health_check
 register_user_test
-last_user_test    # call last-user test here
+last_user_test
+delete_user_test
 test_end

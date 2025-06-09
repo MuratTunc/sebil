@@ -78,3 +78,45 @@ Body: { mailAddress, password }
 
 ✅ Delete user cleanly using the username
 ```
+
+
+# handlers.go
+```bash
+✅ SignUp (RegisterUserHandler):
+Purpose: Register a new user.
+
+Steps:
+
+Parse and validate input.
+
+Check if user already exists.
+
+Hash the password.
+
+Save the user in the database.
+
+✅ Done.
+```
+
+```bash
+✅ SignIn (LoginHandler):
+Purpose: Authenticate an existing user and issue a JWT.
+
+Steps:
+
+Parse email (or username) and password from request.
+
+Look up user in the DB.
+
+Compare hashed password using bcrypt.CompareHashAndPassword.
+
+If valid:
+
+Generate a JWT (access token).
+
+Respond with the token (and optionally user info).
+
+If not valid:
+
+Respond with 401 Unauthorized.
+```

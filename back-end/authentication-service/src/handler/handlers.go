@@ -4,20 +4,56 @@ import (
 	"authentication-service/src/config"
 	errors "authentication-service/src/error"
 	"authentication-service/src/models"
-	"authentication-service/src/repository"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Handler struct {
 	App *config.Config
 }
 
+func CheckUserExists(db *sql.DB, username, mailAddress string) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE username=$1 OR mail_address=$2)`
+	err := db.QueryRow(query, username, mailAddress).Scan(&exists)
+	return exists, err
+}
+
+func InsertUser(db *sql.DB, user models.UserRequest) error {
+	query := `
+		INSERT INTO users (
+			username, mail_address, password, role, phone_number, language_preference,
+			activated, login_status, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6,
+			false, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		)
+	`
+	_, err := db.Exec(query,
+		user.Username,
+		user.MailAddress,
+		user.Password,
+		user.Role,
+		user.PhoneNumber,
+		user.LanguagePreference,
+	)
+	return err
+}
+
 // NewHandler creates a new Handler instance
 func NewHandler(app *config.Config) *Handler {
 	app.Logger.Info("✅ Handler initialized successfully")
 	return &Handler{App: app}
+}
+
+// HashPassword hashes a plain-text password using bcrypt
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
 }
 
 // HealthCheckHandler handles the health check endpoint
@@ -48,16 +84,16 @@ func (h *Handler) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	logger := h.App.Logger
-	var input models.UserRequest
 
+	var input models.UserRequest
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, errors.ErrInvalidRequest, http.StatusBadRequest)
 		logger.Error("Failed to decode user input: " + err.Error())
 		return
 	}
 
-	// Check if user exists before insert
-	exists, err := repository.CheckUserExists(h.App.DB, input.Username, input.MailAddress)
+	// Check if user exists before inserting
+	exists, err := CheckUserExists(h.App.DB, input.Username, input.MailAddress)
 	if err != nil {
 		http.Error(w, errors.ErrDatabaseQuery, http.StatusInternalServerError)
 		logger.Error("Failed to check existing user: " + err.Error())
@@ -68,7 +104,17 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := repository.InsertUser(h.App.DB, input); err != nil {
+	// 🔐 Hash the password before storing it
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		logger.Error("Failed to hash password: " + err.Error())
+		return
+	}
+	input.Password = string(hashedPassword)
+
+	// ✅ Insert the user with hashed password
+	if err := InsertUser(h.App.DB, input); err != nil {
 		http.Error(w, errors.ErrDatabaseInsert, http.StatusInternalServerError)
 		logger.Error("Failed to insert user: " + err.Error())
 		return
@@ -76,7 +122,6 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("User registered successfully"))
-
 	logger.Info("User registered successfully in " + time.Since(startTime).String())
 }
 

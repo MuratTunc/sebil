@@ -3,7 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"time"
 
 	"authentication-service/src/config"
@@ -12,22 +12,20 @@ import (
 	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
-var DB *sql.DB
-
 func ConnectToDB(cfg *config.Config) (*sql.DB, error) {
-	// Construct DSN once
+	// Construct DSN
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
 
-	var err error
-	DB, err = sql.Open("postgres", dsn)
+	// Open DB connection
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ Failed to open DB connection: %v", err))
 		return nil, err
 	}
 
-	// Use retry helper to ping DB with retries
-	err = pingWithRetry(DB, cfg.Logger, 10, 5*time.Second)
+	// Ping with retry
+	err = pingWithRetry(db, cfg.Logger, 10, 5*time.Second)
 	if err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ Failed to ping DB after retries: %v", err))
 		return nil, err
@@ -35,14 +33,17 @@ func ConnectToDB(cfg *config.Config) (*sql.DB, error) {
 
 	cfg.Logger.Info("✅ DATABASE connection success!")
 
-	err = runInitSQLScript(cfg)
-	if err != nil {
+	// Save db to config
+	cfg.DB = db
+
+	// Run SQL initialization
+	if err := runInitSQLScript(cfg); err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ DATABASE ERROR: Failed to run initialization SQL script: %v", err))
 		return nil, err
 	}
 
 	cfg.Logger.Info("✅ DATABASE connection completed successfully")
-	return DB, nil
+	return db, nil
 }
 
 func pingWithRetry(db *sql.DB, logger *logger.Logger, maxAttempts int, delay time.Duration) error {
@@ -59,14 +60,13 @@ func pingWithRetry(db *sql.DB, logger *logger.Logger, maxAttempts int, delay tim
 }
 
 func runInitSQLScript(cfg *config.Config) error {
-	sqlFileContent, err := ioutil.ReadFile(cfg.InitSQLFilePath)
+	content, err := os.ReadFile(cfg.InitSQLFilePath)
 	if err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ Error reading SQL file: %v", err))
 		return err
 	}
 
-	_, err = DB.Exec(string(sqlFileContent))
-	if err != nil {
+	if _, err := cfg.DB.Exec(string(content)); err != nil {
 		cfg.Logger.Error(fmt.Sprintf("❌ Error executing SQL: %v", err))
 		return err
 	}

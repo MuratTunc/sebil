@@ -79,3 +79,29 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("User registered successfully in " + time.Since(startTime).String())
 }
+
+func (h *Handler) GetLastUserHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	query := `SELECT id, username, mail_address, role, activated, created_at FROM users ORDER BY created_at DESC LIMIT 1`
+
+	row := h.App.DB.QueryRow(query)
+
+	var user models.User
+
+	err := row.Scan(&user.ID, &user.Username, &user.MailAddress, &user.Role, &user.Activated, &user.CreatedAt)
+	if err != nil {
+		logger.Error("Failed to fetch last user: " + err.Error())
+		http.Error(w, "Failed to retrieve last user", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		logger.Error("Failed to encode user response: " + err.Error())
+	}
+
+	logger.Info("Last user fetched successfully in " + time.Since(startTime).String())
+}

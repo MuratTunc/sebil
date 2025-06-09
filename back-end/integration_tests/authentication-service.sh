@@ -9,6 +9,8 @@ else
   exit 1
 fi
 
+export PGPASSWORD=$AUTHENTICATION_DB_PASSWORD
+
 # Install jq (JSON parsing utility) if not already installed
 if ! command -v jq &> /dev/null
 then
@@ -33,6 +35,7 @@ test_end() {
 BASE_URL="http://localhost:$AUTHENTICATION_SERVICE_PORT"
 HEALTH_CHECK_URL="$BASE_URL/auth/health"
 REGISTER_URL="$BASE_URL/auth/register"
+LAST_USER_URL="$BASE_URL/auth/last-user"   # Added last-user endpoint URL
 
 health_check() {
   echo "===>TEST END POINT--->HEALTH CHECK"
@@ -100,28 +103,47 @@ register_user_test() {
   echo
 }
 
-get_last_user_test() {
-  echo "===>TEST END POINT--->GET LAST USER FROM DB"
+last_user_test() {
+  echo "===>TEST END POINT--->GET LAST USER"
   echo
-
-  LAST_USER_URL="$BASE_URL/auth/last-user"
 
   echo "REQUEST URL: $LAST_USER_URL"
   echo "REQUEST TYPE: GET"
 
-  RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$LAST_USER_URL" -H "Accept: application/json")
+  LAST_USER_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$LAST_USER_URL" \
+    -H "Content-Type: application/json")
 
-  HTTP_BODY=$(echo "$RESPONSE" | sed '$ d')
-  HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+  HTTP_BODY=$(echo "$LAST_USER_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$LAST_USER_RESPONSE" | tail -n1)
 
   echo "Last User Response Body: $HTTP_BODY"
   echo "HTTP Status Code: $HTTP_STATUS"
 
-  if [ "$HTTP_STATUS" -eq 200 ]; then
-    echo "✅ Last user fetched successfully"
-  else
-    echo "❌ Failed to fetch last user with status code $HTTP_STATUS"
+  if [ "$HTTP_STATUS" -ne 200 ]; then
+    echo "❌ Failed to fetch last user with status code $HTTP_STATUS. Response: $HTTP_BODY"
     exit 1
+  fi
+
+  # Expected values from registration payload (reuse or hardcode here)
+  EXPECTED_USERNAME="testuser"
+  EXPECTED_MAIL_ADDRESS="testuser@example.com"
+  EXPECTED_ROLE="Sales Representative"
+
+  # Parse the returned JSON values with jq
+  ACTUAL_USERNAME=$(echo "$HTTP_BODY" | jq -r '.username')
+  ACTUAL_MAIL_ADDRESS=$(echo "$HTTP_BODY" | jq -r '.mail_address')
+  ACTUAL_ROLE=$(echo "$HTTP_BODY" | jq -r '.role')
+
+  # Compare expected and actual values
+  if [[ "$ACTUAL_USERNAME" == "$EXPECTED_USERNAME" && \
+        "$ACTUAL_MAIL_ADDRESS" == "$EXPECTED_MAIL_ADDRESS" && \
+        "$ACTUAL_ROLE" == "$EXPECTED_ROLE" ]]; then
+    echo "✅ Last user data matches the registered user!"
+  else
+    echo "❌ Last user data does NOT match the registered user!"
+    echo "Expected username: $EXPECTED_USERNAME, got: $ACTUAL_USERNAME"
+    echo "Expected mail_address: $EXPECTED_MAIL_ADDRESS, got: $ACTUAL_MAIL_ADDRESS"
+    echo "Expected role: $EXPECTED_ROLE, got: $ACTUAL_ROLE"
   fi
 
   echo
@@ -131,5 +153,5 @@ get_last_user_test() {
 test_start
 health_check
 register_user_test
-get_last_db_row
+last_user_test    # call last-user test here
 test_end

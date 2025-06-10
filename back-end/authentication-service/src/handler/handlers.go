@@ -275,3 +275,74 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": newToken})
 }
+
+func (h *Handler) GetUserByMailAddressHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	// Get mail address from query parameters
+	mail := r.URL.Query().Get("mail_address")
+	if mail == "" {
+		http.Error(w, "Missing mail_address query parameter", http.StatusBadRequest)
+		return
+	}
+
+	query := `SELECT id, username, mail_address, role, activated, created_at FROM users WHERE mail_address = $1 LIMIT 1`
+	row := h.App.DB.QueryRow(query, mail)
+
+	var user models.User
+	err := row.Scan(&user.ID, &user.Username, &user.MailAddress, &user.Role, &user.Activated, &user.CreatedAt)
+	if err != nil {
+		logger.Error("User not found: " + err.Error())
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		logger.Error("Failed to encode user response: " + err.Error())
+	}
+
+	logger.Info("User fetched by mail_address successfully in " + time.Since(startTime).String())
+}
+
+func (h *Handler) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	var req models.UpdateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Error("Failed to decode request body: " + err.Error())
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	if req.MailAddress == "" {
+		http.Error(w, "mail_address is required", http.StatusBadRequest)
+		return
+	}
+
+	queryResult := BuildUpdateUserQuery(req.Username, req.Role, req.Activated, req.MailAddress)
+	if queryResult.HasError {
+		http.Error(w, queryResult.ErrorMsg, http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.App.DB.Exec(queryResult.Query, queryResult.Args...)
+	if err != nil {
+		logger.Error("Failed to execute update: " + err.Error())
+		http.Error(w, "Failed to update user", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "No user found with the given mail address", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("User updated successfully"))
+	logger.Info("User updated successfully in " + time.Since(startTime).String())
+}

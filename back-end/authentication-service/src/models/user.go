@@ -24,3 +24,10 @@ type LoginRequest struct {
 	MailAddress string `json:"mail_address"`
 	Password    string `json:"password"`
 }
+
+type UpdateUserRequest struct {
+	MailAddress string `json:"mail_address"`
+	Username    string `json:"username"`
+	Role        string `json:"role"`
+	Activated   *bool  `json:"activated"` // use pointer to allow optional field
+}

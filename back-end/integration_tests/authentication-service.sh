@@ -48,7 +48,9 @@ LAST_USER_URL="$BASE_URL/auth/last-user"
 DELETE_USER_URL="$BASE_URL/auth/delete-user"
 LOGIN_URL="$BASE_URL/auth/login"
 LOGOUT_URL="$BASE_URL/auth/logout"
+GET_USER_URL="$BASE_URL/auth/get-user-by-mail"
 REFRESH_TOKEN_URL="$BASE_URL/auth/refresh-jwt-token"
+UPDATE_USER_URL="$BASE_URL/auth/update-user"
 TOKEN=""
 
 health_check() {
@@ -283,6 +285,83 @@ refresh_jwt_token_test() {
   echo
 }
 
+get_user_test() {
+  echo "===> TEST ENDPOINT ---> GET USER BY MAIL ADDRESS"
+  echo
+
+  local request_url="${GET_USER_URL}?mail_address=${TEST_MAIL_ADDRESS}"
+
+  echo "REQUEST URL: $request_url"
+  echo "REQUEST TYPE: GET"
+
+  GET_USER_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$request_url" \
+    -H "Content-Type: application/json")
+
+  HTTP_BODY=$(echo "$GET_USER_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$GET_USER_RESPONSE" | tail -n1)
+
+  echo "Get User Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    USERNAME=$(echo "$HTTP_BODY" | jq -r '.username')
+    if [[ "$USERNAME" != "null" && "$USERNAME" != "" ]]; then
+      echo "✅ User fetched successfully: $USERNAME"
+    else
+      echo "❌ User data missing from response"
+      exit 1
+    fi
+  else
+    echo "❌ Get user failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
+    exit 1
+  fi
+
+  echo
+}
+
+update_user_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> UPDATE USER"
+
+  REQUEST_TYPE="PUT"
+  AUTH_HEADER="Authorization: Bearer $JWT_TOKEN"
+
+  # Prepare the update payload
+  REQUEST_PAYLOAD=$(cat <<EOF
+{
+  "mail_address": "testuser@example.com",
+  "username": "updateduser",
+  "role": "Admin",
+  "activated": true
+}
+EOF
+)
+
+  echo "REQUEST URL: $UPDATE_USER_URL"
+  echo "REQUEST TYPE: $REQUEST_TYPE"
+  echo "AUTH HEADER: $AUTH_HEADER"
+  echo "REQUEST PAYLOAD: $REQUEST_PAYLOAD"
+
+  HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X $REQUEST_TYPE $UPDATE_USER_URL \
+    -H "Content-Type: application/json" \
+    -H "$AUTH_HEADER" \
+    -d "$REQUEST_PAYLOAD")
+
+  # Extract body and status
+  RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+  echo "Update User Response Body: $RESPONSE_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ User updated successfully"
+  else
+    echo "❌ Failed to update user"
+    exit 1
+  fi
+}
+
 
 
 
@@ -290,7 +369,7 @@ delete_user_test() {
   echo "===>TEST END POINT--->DELETE USER"
   echo
 
-  DELETE_USERNAME="$TEST_USERNAME"
+  DELETE_USERNAME="updateduser"
   REQUEST_URL="$DELETE_USER_URL?username=$DELETE_USERNAME"
   echo "REQUEST URL: $REQUEST_URL"
   echo "REQUEST TYPE: DELETE"
@@ -317,10 +396,12 @@ delete_user_test() {
 test_start
 health_check           # Make sure your service is up
 register_user_test     # Create a new user first
+get_user_test 
 last_user_test         # Verify user exists (optional but useful)
 login_user_test        # Log in to get the JWT token
 sleep 1
 refresh_jwt_token_test # Test refreshing that token while logged in
+update_user_test
 logout_user_test       # Log out and invalidate the token
 delete_user_test       # Delete the user to clean up
 test_end

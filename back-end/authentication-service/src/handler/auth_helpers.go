@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"errors"
@@ -15,6 +16,53 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type UpdateQueryResult struct {
+	Query    string
+	Args     []interface{}
+	HasError bool
+	ErrorMsg string
+}
+
+func BuildUpdateUserQuery(reqUsername, reqRole string, reqActivated *bool, mailAddress string) UpdateQueryResult {
+	query := `UPDATE users SET `
+	args := []interface{}{}
+	paramIdx := 1
+
+	if reqUsername != "" {
+		query += fmt.Sprintf("username = $%d,", paramIdx)
+		args = append(args, reqUsername)
+		paramIdx++
+	}
+
+	if reqRole != "" {
+		query += fmt.Sprintf("role = $%d,", paramIdx)
+		args = append(args, reqRole)
+		paramIdx++
+	}
+
+	if reqActivated != nil {
+		query += fmt.Sprintf("activated = $%d,", paramIdx)
+		args = append(args, *reqActivated)
+		paramIdx++
+	}
+
+	if len(args) == 0 {
+		return UpdateQueryResult{
+			HasError: true,
+			ErrorMsg: "No fields to update",
+		}
+	}
+
+	query = strings.TrimSuffix(query, ",")
+	query += fmt.Sprintf(" WHERE mail_address = $%d", paramIdx)
+	args = append(args, mailAddress)
+
+	return UpdateQueryResult{
+		Query: query,
+		Args:  args,
+	}
+}
 
 func checkUserExists(db *sql.DB, username, mailAddress string) (bool, error) {
 	var exists bool

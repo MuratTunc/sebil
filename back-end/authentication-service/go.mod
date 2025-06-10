@@ -17,6 +17,7 @@ require (
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/golang-jwt/jwt/v5 v5.2.2
+	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
 	golang.org/x/sys v0.33.0 // indirect
 )

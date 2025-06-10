@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -88,6 +89,7 @@ func generateJWT(userID int, secret string, expiration time.Duration) (string, e
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
 		"exp":     time.Now().Add(expiration).Unix(),
+		"jti":     uuid.New().String(), // adds uniqueness
 	})
 	return token.SignedString([]byte(secret))
 }

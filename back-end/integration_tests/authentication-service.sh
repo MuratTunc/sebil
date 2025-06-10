@@ -46,6 +46,7 @@ HEALTH_CHECK_URL="$BASE_URL/auth/health"
 REGISTER_URL="$BASE_URL/auth/register"
 LAST_USER_URL="$BASE_URL/auth/last-user"
 DELETE_USER_URL="$BASE_URL/auth/delete-user"
+LOGIN_URL="$BASE_URL/auth/login"
 
 health_check() {
   echo "===>TEST END POINT--->HEALTH CHECK"
@@ -157,6 +158,53 @@ last_user_test() {
   echo
 }
 
+login_user_test() {
+  echo "===>TEST END POINT--->LOGIN USER"
+  echo
+
+  local payload=$(cat <<EOF
+{
+  "mail_address": "$TEST_MAIL_ADDRESS",
+  "password": "$TEST_PASSWORD"
+}
+EOF
+)
+
+  echo "REQUEST URL: $LOGIN_URL"
+  echo "REQUEST TYPE: POST"
+  echo "REQUEST PAYLOAD: $payload"
+
+  LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$LOGIN_URL" \
+    -H "Content-Type: application/json" \
+    -d "$payload")
+
+  HTTP_BODY=$(echo "$LOGIN_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$LOGIN_RESPONSE" | tail -n1)
+
+  echo "Login Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    TOKEN=$(echo "$HTTP_BODY" | jq -r '.token')
+    if [[ "$TOKEN" != "null" && "$TOKEN" != "" ]]; then
+      echo "✅ User logged in successfully"
+      echo "🪪 JWT Token:"
+      echo "----------------------------------------"
+      echo "$TOKEN"
+      echo "----------------------------------------"
+    else
+      echo "❌ Login succeeded but token is missing"
+      exit 1
+    fi
+  else
+    echo "❌ Login failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
+    exit 1
+  fi
+
+  echo
+}
+
+
 delete_user_test() {
   echo "===>TEST END POINT--->DELETE USER"
   echo
@@ -189,5 +237,6 @@ test_start
 health_check
 register_user_test
 last_user_test
+login_user_test
 delete_user_test
 test_end

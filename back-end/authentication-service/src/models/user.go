@@ -19,3 +19,8 @@ type User struct {
 	Activated   bool      `json:"activated"`
 	CreatedAt   time.Time `json:"created_at"`
 }
+
+type LoginRequest struct {
+	MailAddress string `json:"mail_address"`
+	Password    string `json:"password"`
+}

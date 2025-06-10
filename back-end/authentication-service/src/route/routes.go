@@ -45,6 +45,7 @@ func (r *Routes) publicRoutes(mux *chi.Mux) {
 		mux.Get("/health", r.Handler.HealthCheckHandler)
 		mux.Get("/last-user", r.Handler.GetLastUserHandler)
 		mux.Post("/register", r.Handler.RegisterUserHandler)
+		mux.Post("/login", r.Handler.LoginUserHandler)
 		mux.Delete("/delete-user", r.Handler.DeleteUserHandler)
 
 	})

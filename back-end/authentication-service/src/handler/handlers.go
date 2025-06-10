@@ -4,7 +4,6 @@ import (
 	"authentication-service/src/config"
 	errors "authentication-service/src/error"
 	"authentication-service/src/models"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -16,47 +15,12 @@ type Handler struct {
 	App *config.Config
 }
 
-func CheckUserExists(db *sql.DB, username, mailAddress string) (bool, error) {
-	var exists bool
-	query := `SELECT EXISTS(SELECT 1 FROM users WHERE username=$1 OR mail_address=$2)`
-	err := db.QueryRow(query, username, mailAddress).Scan(&exists)
-	return exists, err
-}
-
-func InsertUser(db *sql.DB, user models.UserRequest) error {
-	query := `
-		INSERT INTO users (
-			username, mail_address, password, role, phone_number, language_preference,
-			activated, login_status, created_at, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6,
-			false, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-		)
-	`
-	_, err := db.Exec(query,
-		user.Username,
-		user.MailAddress,
-		user.Password,
-		user.Role,
-		user.PhoneNumber,
-		user.LanguagePreference,
-	)
-	return err
-}
-
 // NewHandler creates a new Handler instance
 func NewHandler(app *config.Config) *Handler {
 	app.Logger.Info("✅ Handler initialized successfully")
 	return &Handler{App: app}
 }
 
-// HashPassword hashes a plain-text password using bcrypt
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
-}
-
-// HealthCheckHandler handles the health check endpoint
 func (h *Handler) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 
 	startTime := time.Now() // Start the timer for request processing duration
@@ -93,7 +57,7 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user exists before inserting
-	exists, err := CheckUserExists(h.App.DB, input.Username, input.MailAddress)
+	exists, err := checkUserExists(h.App.DB, input.Username, input.MailAddress)
 	if err != nil {
 		http.Error(w, errors.ErrDatabaseQuery, http.StatusInternalServerError)
 		logger.Error("Failed to check existing user: " + err.Error())
@@ -114,7 +78,7 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	input.Password = string(hashedPassword)
 
 	// ✅ Insert the user with hashed password
-	if err := InsertUser(h.App.DB, input); err != nil {
+	if err := insertUser(h.App.DB, input); err != nil {
 		http.Error(w, errors.ErrDatabaseInsert, http.StatusInternalServerError)
 		logger.Error("Failed to insert user: " + err.Error())
 		return
@@ -185,4 +149,38 @@ func (h *Handler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("User deleted successfully"))
 
 	logger.Info("User '" + username + "' deleted successfully in " + time.Since(startTime).String())
+}
+
+func (h *Handler) LoginUserHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	input, err := parseLoginRequest(r)
+	if err != nil {
+		http.Error(w, errors.ErrInvalidRequest, http.StatusBadRequest)
+		logger.Error("Failed to decode login request: " + err.Error())
+		return
+	}
+
+	userID, hashedPwd, err := fetchUserCredentials(h.App.DB, input.MailAddress)
+	if err != nil {
+		handleLoginDBError(err, input.MailAddress, w, logger)
+		return
+	}
+
+	if !validatePassword(hashedPwd, input.Password) {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	tokenString, err := generateJWT(userID, h.App.JWTSecret, h.App.JWTExpiration)
+	if err != nil {
+		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		logger.Error("Failed to sign JWT: " + err.Error())
+		return
+	}
+
+	logger.Info("User logged in successfully in " + time.Since(startTime).String())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
 }

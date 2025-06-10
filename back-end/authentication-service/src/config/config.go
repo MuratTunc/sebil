@@ -4,8 +4,10 @@ import (
 	"authentication-service/src/logger"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
-	"strings"
+	"strconv"
+	"time"
 )
 
 // Set DBPort explicitly to 5432 inside the container
@@ -21,30 +23,35 @@ type Config struct {
 	DBPort          string
 	EnvPrefix       string
 	InitSQLFilePath string
+	JWTSecret       string
 	UseDB           bool // Flag to determine if DB config is needed
 	DB              *sql.DB
 	Logger          *logger.Logger
+	JWTExpiration   time.Duration
 }
 
 // NewConfig initializes the configuration
 func NewConfig(envPrefix string) *Config {
-	useDB := strings.ToLower(os.Getenv(fmt.Sprintf("%s_USE_DB", envPrefix))) == "true"
+
+	jwtExpStr := os.Getenv(fmt.Sprintf("%s_JWTExpiration", envPrefix))
+	jwtExpInt, err := strconv.Atoi(jwtExpStr)
+	if err != nil {
+		log.Fatalf("Invalid JWTExpiration value: %v", err)
+	}
 
 	cfg := &Config{
 		EnvPrefix:       envPrefix,
+		DBHost:          os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_HOST", envPrefix)),
+		DBUser:          os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_USER", envPrefix)),
+		DBPassword:      os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_PASSWORD", envPrefix)),
+		DBName:          os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_NAME", envPrefix)),
 		ServicePort:     os.Getenv(fmt.Sprintf("%s_SERVICE_PORT", envPrefix)),
 		ServiceName:     os.Getenv(fmt.Sprintf("%s_SERVICE_NAME", envPrefix)),
 		InitSQLFilePath: os.Getenv(fmt.Sprintf("%s_INIT_SQL_FILE_PATH", envPrefix)),
-		UseDB:           useDB,
+		JWTSecret:       os.Getenv(fmt.Sprintf("%s_JWTSecret", envPrefix)),
+		JWTExpiration:   time.Duration(jwtExpInt) * time.Hour,
 		DBPort:          FixedDBPort, // fixed port inside the container
 		Logger:          logger.NewLogger(logger.INFO),
-	}
-
-	if useDB {
-		cfg.DBHost = os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_HOST", envPrefix))
-		cfg.DBUser = os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_USER", envPrefix))
-		cfg.DBPassword = os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_PASSWORD", envPrefix))
-		cfg.DBName = os.Getenv(fmt.Sprintf("%s_POSTGRES_DB_NAME", envPrefix))
 	}
 
 	cfg.validateEnvVars()
@@ -56,19 +63,17 @@ func NewConfig(envPrefix string) *Config {
 }
 
 func (c *Config) printEnvVariables() {
+
 	c.Logger.Info(fmt.Sprintf("🔧 LOADED SERVICE ENVIRONMENTS - %s", c.EnvPrefix))
 	c.Logger.Info("🔧 ServicePort: " + c.ServicePort)
 	c.Logger.Info("🔧 ServiceName: " + c.ServiceName)
-	c.Logger.Info(fmt.Sprintf("🔧 UseDB: %v", c.UseDB))
+	c.Logger.Info("🔧 DBHost: " + c.DBHost)
+	c.Logger.Info("🔧 DBUser: " + c.DBUser)
+	c.Logger.Info("🔧 DBPassword: " + c.DBPassword)
+	c.Logger.Info("🔧 DBName: " + c.DBName)
+	c.Logger.Info("🔧 DBPort: " + c.DBPort)
+	c.Logger.Info("🔧 InitSQLFilePath: " + c.InitSQLFilePath)
 
-	if c.UseDB {
-		c.Logger.Info("🔧 DBHost: " + c.DBHost)
-		c.Logger.Info("🔧 DBUser: " + c.DBUser)
-		c.Logger.Info("🔧 DBPassword: " + c.DBPassword)
-		c.Logger.Info("🔧 DBName: " + c.DBName)
-		c.Logger.Info("🔧 DBPort: " + c.DBPort)
-		c.Logger.Info("🔧 InitSQLFilePath: " + c.InitSQLFilePath)
-	}
 }
 
 func (c *Config) validateEnvVars() {

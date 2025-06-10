@@ -1,13 +1,15 @@
 package handler
 
 import (
-	errors "authentication-service/src/error"
 	"authentication-service/src/logger"
 	"authentication-service/src/models"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
+
+	"errors"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -41,6 +43,18 @@ func insertUser(db *sql.DB, user models.UserRequest) error {
 	return err
 }
 
+// Helper function to update login_status in DB
+func updateLoginStatus(db *sql.DB, userID string, status bool) error {
+	_, err := db.Exec("UPDATE users SET login_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", status, userID)
+	return err
+}
+
+func parseRegisterRequest(r *http.Request) (models.UserRequest, error) {
+	var input models.UserRequest
+	err := json.NewDecoder(r.Body).Decode(&input)
+	return input, err
+}
+
 func parseLoginRequest(r *http.Request) (models.LoginRequest, error) {
 	var input models.LoginRequest
 	err := json.NewDecoder(r.Body).Decode(&input)
@@ -60,7 +74,7 @@ func handleLoginDBError(err error, email string, w http.ResponseWriter, logger *
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		logger.Warn("Login attempt failed: user not found with email " + email)
 	} else {
-		http.Error(w, errors.ErrDatabaseQuery, http.StatusInternalServerError)
+		http.Error(w, "Database error for email ", http.StatusInternalServerError)
 		logger.Error("Database error for email " + email + ": " + err.Error())
 	}
 }
@@ -76,4 +90,46 @@ func generateJWT(userID int, secret string, expiration time.Duration) (string, e
 		"exp":     time.Now().Add(expiration).Unix(),
 	})
 	return token.SignedString([]byte(secret))
+}
+
+// parseUserIDFromJWT parses the JWT token string using the secret and returns the userID as a string.
+func parseUserIDFromJWT(tokenStr, secret string) (string, error) {
+	// Define a custom claims struct or use jwt.MapClaims if you want flexibility
+	claims := jwt.MapClaims{}
+
+	// Parse token
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		// Make sure signing method is HMAC
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("jwt:unexpected signing method")
+		}
+		return []byte(secret), nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if !token.Valid {
+		return "", errors.New("jwt:invalid JWTtoken")
+	}
+
+	// Extract userID from claims
+	userIDRaw, ok := claims["user_id"]
+	if !ok {
+		return "", errors.New("jwt:user_id claim missing in token")
+	}
+
+	userID, ok := userIDRaw.(string)
+	if !ok {
+		// Sometimes userID could be float64 if encoded as number, so handle that
+		switch v := userIDRaw.(type) {
+		case float64:
+			userID = fmt.Sprintf("%.0f", v)
+		default:
+			return "", errors.New("jwt:user_id claim is not a string")
+		}
+	}
+
+	return userID, nil
 }

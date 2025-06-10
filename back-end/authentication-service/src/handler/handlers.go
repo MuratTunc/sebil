@@ -5,7 +5,10 @@ import (
 	errors "authentication-service/src/error"
 	"authentication-service/src/models"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -49,10 +52,10 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	logger := h.App.Logger
 
-	var input models.UserRequest
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	input, err := parseRegisterRequest(r)
+	if err != nil {
 		http.Error(w, errors.ErrInvalidRequest, http.StatusBadRequest)
-		logger.Error("Failed to decode user input: " + err.Error())
+		logger.Error("Failed to decode register request: " + err.Error())
 		return
 	}
 
@@ -169,13 +172,13 @@ func (h *Handler) LoginUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !validatePassword(hashedPwd, input.Password) {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		http.Error(w, errors.ErrInvalidRequest, http.StatusUnauthorized)
 		return
 	}
 
 	tokenString, err := generateJWT(userID, h.App.JWTSecret, h.App.JWTExpiration)
 	if err != nil {
-		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		http.Error(w, errors.ErrFailedToGenerateJWT, http.StatusInternalServerError)
 		logger.Error("Failed to sign JWT: " + err.Error())
 		return
 	}
@@ -183,4 +186,92 @@ func (h *Handler) LoginUserHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Info("User logged in successfully in " + time.Since(startTime).String())
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+}
+
+func (h *Handler) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	// Get the token from Authorization header (Bearer token)
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, errors.ErrAuthorizationHeader, http.StatusUnauthorized)
+		logger.Error("Logout failed: missing Authorization header")
+		return
+	}
+
+	var tokenStr string
+	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
+	if tokenStr == "" {
+		http.Error(w, errors.ErrAuthorizationInvalid, http.StatusUnauthorized)
+		logger.Error("Logout failed: invalid Authorization header format")
+		return
+	}
+
+	// Parse the token to get userID (implement parseUserIDFromJWT with your JWT lib)
+	userID, err := parseUserIDFromJWT(tokenStr, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, errors.ErrInvalidJWT, http.StatusUnauthorized)
+		logger.Error("Logout failed: invalid token - " + err.Error())
+		return
+	}
+
+	// Update login_status to false
+	err = updateLoginStatus(h.App.DB, userID, false)
+	if err != nil {
+		http.Error(w, errors.ErrFailedToLogout, http.StatusInternalServerError)
+		logger.Error("Logout DB update failed: " + err.Error())
+		return
+	}
+
+	logger.Info("User logged out successfully in " + time.Since(startTime).String())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Logout successful"})
+}
+
+func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	// Get the token from Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, errors.ErrTokenMissing, http.StatusUnauthorized)
+		return
+	}
+
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		http.Error(w, errors.ErrTokenInvalid, http.StatusUnauthorized)
+		return
+	}
+	tokenString := parts[1]
+
+	// Parse and validate token
+	userIDStr, err := parseUserIDFromJWT(tokenString, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, errors.ErrTokenInvalid, http.StatusUnauthorized)
+		logger.Error("Failed to parse token in refresh: " + err.Error())
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID in token", http.StatusUnauthorized)
+		logger.Error("User ID conversion error: " + err.Error())
+		return
+	}
+
+	// Generate new token with fresh expiry
+	newToken, err := generateJWT(userID, h.App.JWTSecret, h.App.JWTExpiration)
+	if err != nil {
+		http.Error(w, errors.ErrTokenFailure, http.StatusInternalServerError)
+		logger.Error("Failed to generate new JWT token: " + err.Error())
+		return
+	}
+
+	logger.Info("Token refreshed successfully in " + time.Since(startTime).String())
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": newToken})
 }

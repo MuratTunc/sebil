@@ -47,6 +47,9 @@ REGISTER_URL="$BASE_URL/auth/register"
 LAST_USER_URL="$BASE_URL/auth/last-user"
 DELETE_USER_URL="$BASE_URL/auth/delete-user"
 LOGIN_URL="$BASE_URL/auth/login"
+LOGOUT_URL="$BASE_URL/auth/logout"
+REFRESH_TOKEN_URL="$BASE_URL/auth/refresh-jwt-token"
+TOKEN=""
 
 health_check() {
   echo "===>TEST END POINT--->HEALTH CHECK"
@@ -204,6 +207,84 @@ EOF
   echo
 }
 
+logout_user_test() {
+  echo "===> TEST END POINT ---> LOGOUT USER"
+  echo
+
+  if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
+    echo "❌ No JWT token found from login, cannot test logout"
+    exit 1
+  fi
+
+  echo "REQUEST URL: $LOGOUT_URL"
+  echo "REQUEST TYPE: POST"
+  echo "Authorization: Bearer <token>"
+
+  LOGOUT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$LOGOUT_URL" \
+    -H "Authorization: Bearer $TOKEN")
+
+  HTTP_BODY=$(echo "$LOGOUT_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$LOGOUT_RESPONSE" | tail -n1)
+
+  echo "Logout Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ User logged out successfully"
+  else
+    echo "❌ Logout failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
+    exit 1
+  fi
+
+  echo
+}
+
+refresh_jwt_token_test() {
+  echo "===> TEST ENDPOINT ---> REFRESH JWT TOKEN"
+  echo
+
+  # Use the token you got from login test as a bearer token here
+  if [ -z "$TOKEN" ]; then
+    echo "❌ No JWT token available to test refresh"
+    exit 1
+  fi
+
+  echo "REQUEST URL: $REFRESH_TOKEN_URL"
+  echo "REQUEST TYPE: POST"
+  echo "Authorization: Bearer $TOKEN"
+
+  REFRESH_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$REFRESH_TOKEN_URL" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json")
+
+  HTTP_BODY=$(echo "$REFRESH_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$REFRESH_RESPONSE" | tail -n1)
+
+  echo "Refresh Token Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    NEW_TOKEN=$(echo "$HTTP_BODY" | jq -r '.token')
+    if [[ "$NEW_TOKEN" != "null" && "$NEW_TOKEN" != "" ]]; then
+      echo "✅ JWT token refreshed successfully"
+      echo "🆕 New JWT Token:"
+      echo "----------------------------------------"
+      echo "$NEW_TOKEN"
+      echo "----------------------------------------"
+    else
+      echo "❌ Refresh succeeded but new token is missing"
+      exit 1
+    fi
+  else
+    echo "❌ Refresh failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
+    exit 1
+  fi
+
+  echo
+}
+
+
+
 
 delete_user_test() {
   echo "===>TEST END POINT--->DELETE USER"
@@ -234,9 +315,12 @@ delete_user_test() {
 
 # Run tests
 test_start
-health_check
-register_user_test
-last_user_test
-login_user_test
-delete_user_test
+health_check           # Make sure your service is up
+register_user_test     # Create a new user first
+last_user_test         # Verify user exists (optional but useful)
+login_user_test        # Log in to get the JWT token
+sleep 1
+refresh_jwt_token_test # Test refreshing that token while logged in
+logout_user_test       # Log out and invalidate the token
+delete_user_test       # Delete the user to clean up
 test_end

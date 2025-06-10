@@ -21,4 +21,20 @@ const (
 	ErrServiceDown    = "Dependent service is currently unavailable"
 	ErrDatabaseInsert = "Could not insert bew user to DATABASE"
 	ErrDatabaseQuery  = "In CheckUserExists function DatabaseQuery error"
+
+	// Login Errors
+	ErrInvalidCredentails  = "Invalid Login credentials"
+	ErrFailedDecodingLogin = "Failed to decode login request: "
+
+	// Logout Errors
+	ErrAuthorizationHeader  = "Authorization header missing"
+	ErrAuthorizationInvalid = "Invalid Authorization header format"
+	ErrFailedToLogout       = "Failed to logout user"
+
+	// JWT Errors
+	ErrUnexpectedSigningMethodJWT = "unexpected signing method"
+	ErrInvalidJWT                 = "InvalidJWTToken"
+	ErrMissingUserIdJWT           = "User_id claim missing in token"
+	ErrMissingUserIdIsNotStrJWT   = "User_id claim is not a string"
+	ErrFailedToGenerateJWT        = "Failed to generate JWT token"
 )

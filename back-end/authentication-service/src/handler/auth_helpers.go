@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -23,6 +24,43 @@ type UpdateQueryResult struct {
 	Args     []interface{}
 	HasError bool
 	ErrorMsg string
+}
+
+var (
+	ErrMissingAuthHeader = errors.New("missing Authorization header")
+	ErrInvalidAuthHeader = errors.New("invalid Authorization header format")
+	ErrInvalidToken      = errors.New("invalid or expired token")
+	ErrMissingRoleClaim  = errors.New("missing role claim in token")
+)
+
+// ExtractClaimsFromRequest extracts JWT claims (MapClaims) from Authorization header
+func ExtractClaimsFromRequest(r *http.Request, jwtSecret string) (jwt.MapClaims, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return nil, ErrMissingAuthHeader
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return nil, ErrInvalidAuthHeader
+	}
+
+	tokenStr := parts[1]
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return nil, ErrInvalidToken
+	}
+
+	return claims, nil
+}
+
+func fetchUserRole(db *sql.DB, userID int) (string, error) {
+	var role string
+	query := `SELECT role FROM users WHERE id = $1`
+	err := db.QueryRow(query, userID).Scan(&role)
+	return role, err
 }
 
 func BuildUpdateUserQuery(reqUsername, reqRole string, reqActivated *bool, mailAddress string) UpdateQueryResult {
@@ -105,18 +143,26 @@ func parseRegisterRequest(r *http.Request) (models.UserRequest, error) {
 	return input, err
 }
 
-func parseLoginRequest(r *http.Request) (models.LoginRequest, error) {
+func parseLoginRequest(r *http.Request) (*models.LoginRequest, error) {
+	bodyBytes, _ := io.ReadAll(r.Body)
+	fmt.Println("🔍 Raw Request Body:", string(bodyBytes))
+
 	var input models.LoginRequest
-	err := json.NewDecoder(r.Body).Decode(&input)
-	return input, err
+	err := json.Unmarshal(bodyBytes, &input)
+	if err != nil {
+		fmt.Println("❌ JSON Unmarshal error:", err)
+		return nil, err
+	}
+	return &input, nil
 }
 
-func fetchUserCredentials(db *sql.DB, email string) (int, string, error) {
+func fetchUserCredentials(db *sql.DB, email string) (int, string, string, error) {
 	var userID int
 	var hashedPwd string
-	query := `SELECT id, password FROM users WHERE mail_address = $1`
-	err := db.QueryRow(query, email).Scan(&userID, &hashedPwd)
-	return userID, hashedPwd, err
+	var role string
+	query := `SELECT id, password, role FROM users WHERE mail_address = $1`
+	err := db.QueryRow(query, email).Scan(&userID, &hashedPwd, &role)
+	return userID, hashedPwd, role, err
 }
 
 func handleLoginDBError(err error, email string, w http.ResponseWriter, logger *logger.Logger) {
@@ -134,11 +180,12 @@ func validatePassword(hashedPwd, plainPwd string) bool {
 	return err == nil
 }
 
-func generateJWT(userID int, secret string, expiration time.Duration) (string, error) {
+func generateJWT(userID int, role string, secret string, expiration time.Duration) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
+		"role":    role,
 		"exp":     time.Now().Add(expiration).Unix(),
-		"jti":     uuid.New().String(), // adds uniqueness
+		"jti":     uuid.New().String(),
 	})
 	return token.SignedString([]byte(secret))
 }

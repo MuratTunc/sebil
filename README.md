@@ -69,57 +69,10 @@ Body: { mailAddress, password }
 | `Customer`          | View own profile/orders, update account settings, limited access to features |
 
 
-# Integration tests
-
-```bash
-✅ Register user using global variables
-
-✅ Fetch last user and verify fields
-
-✅ Delete user cleanly using the username
-```
 
 
-# handlers.go
-```bash
-✅ SignUp (RegisterUserHandler):
-Purpose: Register a new user.
+# HANDLERS
 
-Steps:
-
-Parse and validate input.
-
-Check if user already exists.
-
-Hash the password.
-
-Save the user in the database.
-
-✅ Done.
-```
-
-```bash
-✅ SignIn (LoginHandler):
-Purpose: Authenticate an existing user and issue a JWT.
-
-Steps:
-
-Parse email (or username) and password from request.
-
-Look up user in the DB.
-
-Compare hashed password using bcrypt.CompareHashAndPassword.
-
-If valid:
-
-Generate a JWT (access token).
-
-Respond with the token (and optionally user info).
-
-If not valid:
-
-Respond with 401 Unauthorized.
-```
 
 # Register User Handler Flow
 
@@ -442,3 +395,12 @@ Respond with 401 Unauthorized.
     - Log that the forgot password process finished and the elapsed time.
 
 
+# Integration tests
+
+```bash
+✅ Register user using global variables
+
+✅ Fetch last user and verify fields
+
+✅ Delete user cleanly using the username
+```

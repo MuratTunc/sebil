@@ -134,7 +134,7 @@ func (h *Handler) LoginUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, hashedPwd, err := fetchUserCredentials(h.App.DB, input.MailAddress)
+	userID, hashedPwd, role, err := fetchUserCredentials(h.App.DB, input.MailAddress)
 	if err != nil {
 		handleLoginDBError(err, input.MailAddress, w, logger)
 		return
@@ -142,19 +142,24 @@ func (h *Handler) LoginUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !validatePassword(hashedPwd, input.Password) {
 		http.Error(w, errors.ErrInvalidRequest, http.StatusUnauthorized)
+		logger.Error("Invalid password for user: " + input.MailAddress)
 		return
 	}
 
-	tokenString, err := generateJWT(userID, h.App.JWTSecret, h.App.JWTExpiration)
+	tokenString, err := generateJWT(userID, role, h.App.JWTSecret, h.App.JWTExpiration)
 	if err != nil {
 		http.Error(w, errors.ErrFailedToGenerateJWT, http.StatusInternalServerError)
 		logger.Error("Failed to sign JWT: " + err.Error())
 		return
 	}
 
-	logger.Info("User logged in successfully in " + time.Since(startTime).String())
+	logger.Info("✅ User logged in successfully in " + time.Since(startTime).String())
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+	json.NewEncoder(w).Encode(map[string]string{
+		"token": tokenString,
+		"role":  role,
+	})
 }
 
 func (h *Handler) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +207,6 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	logger := h.App.Logger
 
-	// Get the token from Authorization header
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		http.Error(w, errors.ErrTokenMissing, http.StatusUnauthorized)
@@ -216,7 +220,6 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tokenString := parts[1]
 
-	// Parse and validate token
 	userIDStr, err := parseUserIDFromJWT(tokenString, h.App.JWTSecret)
 	if err != nil {
 		http.Error(w, errors.ErrTokenInvalid, http.StatusUnauthorized)
@@ -231,8 +234,16 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate new token with fresh expiry
-	newToken, err := generateJWT(userID, h.App.JWTSecret, h.App.JWTExpiration)
+	// 🆕 Fetch user role
+	role, err := fetchUserRole(h.App.DB, userID)
+	if err != nil {
+		http.Error(w, "Failed to fetch user role", http.StatusInternalServerError)
+		logger.Error("DB error fetching role: " + err.Error())
+		return
+	}
+
+	// 🆕 Generate new token including role
+	newToken, err := generateJWT(userID, role, h.App.JWTSecret, h.App.JWTExpiration)
 	if err != nil {
 		http.Error(w, errors.ErrTokenFailure, http.StatusInternalServerError)
 		logger.Error("Failed to generate new JWT token: " + err.Error())
@@ -240,7 +251,6 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Info("Token refreshed successfully in " + time.Since(startTime).String())
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": newToken})
 }
@@ -581,4 +591,50 @@ func (h *Handler) ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Password reset successfully! User can use new password."))
 	logger.Info("Password reset successfully for " + req.MailAddress + " in " + time.Since(startTime).String())
+}
+
+func (h *Handler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	// 🔐 Extract claims from JWT
+	claims, err := ExtractClaimsFromRequest(r, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		logger.Error("Failed to extract JWT claims: " + err.Error())
+		return
+	}
+
+	// 🛡️ Check if user role is Admin
+	role, ok := claims["role"].(string)
+	if !ok || role != "Admin" {
+		http.Error(w, "Access denied: Admins only", http.StatusForbidden)
+		logger.Warn("Unauthorized access attempt to list users")
+		return
+	}
+
+	// Query all users from the DB
+	rows, err := h.App.DB.Query(`SELECT id, username, mail_address, role, activated, login_status, created_at, updated_at FROM users`)
+	if err != nil {
+		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
+		logger.Error("Failed to query users: " + err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var users []models.UserResponse
+	for rows.Next() {
+		var u models.UserResponse
+		err := rows.Scan(&u.ID, &u.Username, &u.MailAddress, &u.Role, &u.Activated, &u.LoginStatus, &u.CreatedAt, &u.UpdatedAt)
+		if err != nil {
+			http.Error(w, "Error scanning user data", http.StatusInternalServerError)
+			logger.Error("Failed to scan user row: " + err.Error())
+			return
+		}
+		users = append(users, u)
+	}
+
+	logger.Info("✅ Admin listed all users in " + time.Since(startTime).String())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
 }

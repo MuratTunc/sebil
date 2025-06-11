@@ -55,3 +55,14 @@ type ResetPasswordRequest struct {
 	MailAddress string `json:"mail_address"`
 	NewPassword string `json:"new_password"`
 }
+
+type UserResponse struct {
+	ID          int       `json:"id"`
+	Username    string    `json:"username"`
+	MailAddress string    `json:"mail_address"`
+	Role        string    `json:"role"`
+	Activated   bool      `json:"activated"`
+	LoginStatus bool      `json:"login_status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

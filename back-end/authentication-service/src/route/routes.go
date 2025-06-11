@@ -46,6 +46,7 @@ func (r *Routes) publicRoutes(mux *chi.Mux) {
 		mux.Get("/health", r.Handler.HealthCheckHandler)
 		mux.Get("/last-user", r.Handler.GetLastUserHandler)
 		mux.Get("/get-user-by-mail", r.Handler.GetUserByMailAddressHandler)
+		mux.Get("/list-users", r.Handler.ListUsersHandler)
 
 		// PUT Requests
 		mux.Put("/update-user", r.Handler.UpdateUserHandler)

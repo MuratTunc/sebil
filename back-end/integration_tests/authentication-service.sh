@@ -33,11 +33,11 @@ test_end() {
 # Global test user parameters
 TEST_USERNAME="testuser"
 TEST_MAIL_ADDRESS="testuser@example.com"
-TEST_PASSWORD="TestPassword123!"
-TEST_ROLE="Sales Representative"
+TEST_PASSWORD="TestPassword123"
+TEST_ROLE="Admin"
 TEST_PHONE_NUMBER="+1234567890"
 TEST_LANGUAGE="en"
-NEW_PASSWORD="NewPass456!"
+NEW_PASSWORD="NewPass456"
 MAIL_RESET_CODE_FOR_TEST="123456"
 
 
@@ -57,6 +57,7 @@ CHANGE_PASSWORD_URL="$BASE_URL/auth/change-password"
 SEND_AUTH_CODE_URL="$BASE_URL/auth/send-mail-reset-code"
 VERIFY_RESET_CODE_URL="$BASE_URL/auth/verify-mail-reset-code"
 RESET_PASSWORD_URL="$BASE_URL/auth/reset-password"
+LIST_USERS_URL="$BASE_URL/auth/list-users"
 
 TOKEN=""
 
@@ -175,7 +176,7 @@ last_user_test() {
 
 login_user_test() {
   echo ""
-  echo "===>TEST END POINT--->LOGIN USER"
+  echo "===> TEST ENDPOINT ---> LOGIN USER"
   echo
 
   local payload=$(cat <<EOF
@@ -202,12 +203,14 @@ EOF
 
   if [ "$HTTP_STATUS" -eq 200 ]; then
     TOKEN=$(echo "$HTTP_BODY" | jq -r '.token')
+    ROLE=$(echo "$HTTP_BODY" | jq -r '.role')
     if [[ "$TOKEN" != "null" && "$TOKEN" != "" ]]; then
       echo "✅ User logged in successfully"
       echo "🪪 JWT Token:"
       echo "----------------------------------------"
       echo "$TOKEN"
       echo "----------------------------------------"
+      echo "🧑‍💼 User Role: $ROLE"
     else
       echo "❌ Login succeeded but token is missing"
       exit 1
@@ -219,6 +222,7 @@ EOF
 
   echo
 }
+
 
 logout_user_test() {
   echo ""
@@ -527,6 +531,56 @@ EOF
 }
 
 
+list_users_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> LIST USERS (ADMIN ONLY)"
+  echo
+
+  if [ -z "$LIST_USERS_URL" ]; then
+    echo "❌ LIST_USERS_URL is not set. Please define it before running the test."
+    exit 1
+  fi
+
+  if [ -z "$TOKEN" ]; then
+    echo "❌ TOKEN is not set. Make sure login_user_test() was successful."
+    exit 1
+  fi
+
+  echo "REQUEST URL: $LIST_USERS_URL"
+  echo "REQUEST TYPE: GET"
+  echo "Authorization: Bearer $TOKEN"
+
+  LIST_USERS_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$LIST_USERS_URL" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json")
+
+  HTTP_BODY=$(echo "$LIST_USERS_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$LIST_USERS_RESPONSE" | tail -n1)
+
+  echo "List Users Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ -z "$HTTP_STATUS" ]; then
+    echo "❌ No HTTP status received. Check the URL and the curl command."
+    exit 1
+  fi
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    # Extract role from the first user in the list using grep and cut
+    ROLE=$(echo "$HTTP_BODY" | grep -o '"role":"[^"]*"' | head -n 1 | cut -d':' -f2 | tr -d '"')
+
+    echo "✅ Successfully listed users."
+    echo "----------------------------------------"
+    echo "🧑‍💼 User Role: $ROLE"
+  else
+    echo "❌ Failed to list users. Check if token is valid and user is admin."
+    exit 1
+  fi
+
+  echo
+}
+
+
 delete_user_test() {
   echo ""
   echo "===> TEST ENDPOINT ---> DELETE USER BY MAIL"
@@ -577,6 +631,7 @@ register_user_test                      # Create a new user first
 get_user_test
 last_user_test                          # Verify user exists (optional but useful)
 login_user_test                         # Log in to get the JWT token
+list_users_test
 sleep 1
 change_password_test                    # Test password change while logged in
 send_forgot_password_code_test

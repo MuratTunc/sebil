@@ -31,3 +31,17 @@ type UpdateUserRequest struct {
 	Role        string `json:"role"`
 	Activated   *bool  `json:"activated"` // use pointer to allow optional field
 }
+
+type DeleteRequest struct {
+	MailAddress string `json:"mail_address"`
+}
+
+type ChangePasswordRequest struct {
+	MailAddress string `json:"mail_address"`
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+type ForgotPasswordRequest struct {
+	MailAddress string `json:"mail_address"`
+}

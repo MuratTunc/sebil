@@ -37,6 +37,7 @@ TEST_PASSWORD="TestPassword123!"
 TEST_ROLE="Sales Representative"
 TEST_PHONE_NUMBER="+1234567890"
 TEST_LANGUAGE="en"
+NEW_PASSWORD="NewPass456!"
 
 
 
@@ -51,6 +52,7 @@ LOGOUT_URL="$BASE_URL/auth/logout"
 GET_USER_URL="$BASE_URL/auth/get-user-by-mail"
 REFRESH_TOKEN_URL="$BASE_URL/auth/refresh-jwt-token"
 UPDATE_USER_URL="$BASE_URL/auth/update-user"
+CHANGE_PASSWORD_URL="$BASE_URL/auth/change-password"
 TOKEN=""
 
 health_check() {
@@ -362,44 +364,100 @@ EOF
   fi
 }
 
+change_password_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> CHANGE PASSWORD"
+
+  REQUEST_TYPE="POST"
+  AUTH_HEADER="Authorization: Bearer $TOKEN"
+
+  REQUEST_PAYLOAD=$(cat <<EOF
+{
+  "mail_address": "testuser@example.com",
+  "old_password": "$TEST_PASSWORD",
+  "new_password": "$NEW_PASSWORD"
+}
+EOF
+)
+
+  echo "REQUEST URL: $CHANGE_PASSWORD_URL"
+  echo "REQUEST TYPE: $REQUEST_TYPE"
+  echo "AUTH HEADER: $AUTH_HEADER"
+  echo "REQUEST PAYLOAD: $REQUEST_PAYLOAD"
+
+  HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X $REQUEST_TYPE $CHANGE_PASSWORD_URL \
+    -H "Content-Type: application/json" \
+    -H "$AUTH_HEADER" \
+    -d "$REQUEST_PAYLOAD")
+
+  RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+  echo "Change Password Response Body: $RESPONSE_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ Password changed successfully"
+  else
+    echo "❌ Failed to change password"
+    exit 1
+  fi
+}
 
 
 
 delete_user_test() {
-  echo "===>TEST END POINT--->DELETE USER"
-  echo
+  echo ""
+  echo "===> TEST ENDPOINT ---> DELETE USER BY MAIL"
 
-  DELETE_USERNAME="updateduser"
-  REQUEST_URL="$DELETE_USER_URL?username=$DELETE_USERNAME"
-  echo "REQUEST URL: $REQUEST_URL"
-  echo "REQUEST TYPE: DELETE"
+  REQUEST_TYPE="DELETE"
+  REQUEST_PAYLOAD=$(cat <<EOF
+{
+  "mail_address": "testuser@example.com"
+}
+EOF
+)
 
-  DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE "$REQUEST_URL")
+  echo "REQUEST URL: $DELETE_USER_URL"
+  echo "REQUEST TYPE: $REQUEST_TYPE"
+  echo "REQUEST PAYLOAD: $REQUEST_PAYLOAD"
 
-  HTTP_BODY=$(echo "$DELETE_RESPONSE" | sed '$ d')
-  HTTP_STATUS=$(echo "$DELETE_RESPONSE" | tail -n1)
+  HTTP_RESPONSE=$(curl -s --fail -w "HTTPSTATUS:%{http_code}" -X $REQUEST_TYPE $DELETE_USER_URL \
+    -H "Content-Type: application/json" \
+    -d "$REQUEST_PAYLOAD")
 
-  echo "Delete User Response Body: $HTTP_BODY"
-  echo "HTTP Status Code: $HTTP_STATUS"
+  CURL_EXIT_CODE=$?
 
-  if [ "$HTTP_STATUS" -eq 200 ]; then
-    echo "✅ User '$DELETE_USERNAME' deleted successfully"
-  else
-    echo "❌ Failed to delete user with status code $HTTP_STATUS. Response: $HTTP_BODY"
+  RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+  if [ $CURL_EXIT_CODE -ne 0 ]; then
+    echo "❌ curl command failed (exit code: $CURL_EXIT_CODE)"
     exit 1
   fi
 
-  echo
+  echo "Delete User Response Body: $RESPONSE_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ User deleted successfully"
+  else
+    echo "❌ Failed to delete user. Status: $HTTP_STATUS"
+    echo "Response: $RESPONSE_BODY"
+    exit 1
+  fi
 }
+
 
 # Run tests
 test_start
 health_check           # Make sure your service is up
 register_user_test     # Create a new user first
-get_user_test 
+get_user_test
 last_user_test         # Verify user exists (optional but useful)
 login_user_test        # Log in to get the JWT token
 sleep 1
+change_password_test   # Test password change while logged in
 refresh_jwt_token_test # Test refreshing that token while logged in
 update_user_test
 logout_user_test       # Log out and invalidate the token

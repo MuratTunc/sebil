@@ -120,3 +120,18 @@ If not valid:
 
 Respond with 401 Unauthorized.
 ```
+
+
+```bash
+✅ ForgotPasswordHandler:
+
+🔐 Purpose:
+When a user forgets their password, they can enter their email address. If it exists in the system, the backend should:
+
+Generate a secure reset code (or link).
+
+Store it temporarily (e.g., in DB or Redis).
+
+Email the reset code to the user.
+
+```

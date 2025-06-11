@@ -42,15 +42,23 @@ func (r *Routes) Routes() http.Handler {
 
 func (r *Routes) publicRoutes(mux *chi.Mux) {
 	mux.Route("/auth", func(mux chi.Router) {
+		// GET Requests
 		mux.Get("/health", r.Handler.HealthCheckHandler)
 		mux.Get("/last-user", r.Handler.GetLastUserHandler)
 		mux.Get("/get-user-by-mail", r.Handler.GetUserByMailAddressHandler)
+
+		// PUT Requests
 		mux.Put("/update-user", r.Handler.UpdateUserHandler)
+
+		// POST Requests
 		mux.Post("/register", r.Handler.RegisterUserHandler)
 		mux.Post("/login", r.Handler.LoginUserHandler)
 		mux.Post("/logout", r.Handler.LogoutUserHandler)
 		mux.Post("/refresh-jwt-token", r.Handler.RefreshTokenHandler)
-		mux.Delete("/delete-user", r.Handler.DeleteUserHandler)
+		mux.Post("/change-password", r.Handler.ChangePasswordHandler)
+		mux.Post("/forgot-password", r.Handler.ForgotPasswordHandler)
 
+		// DELETE Requests
+		mux.Delete("/delete-user", r.Handler.DeleteUserHandler)
 	})
 }

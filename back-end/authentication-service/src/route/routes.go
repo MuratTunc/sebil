@@ -56,7 +56,9 @@ func (r *Routes) publicRoutes(mux *chi.Mux) {
 		mux.Post("/logout", r.Handler.LogoutUserHandler)
 		mux.Post("/refresh-jwt-token", r.Handler.RefreshTokenHandler)
 		mux.Post("/change-password", r.Handler.ChangePasswordHandler)
-		mux.Post("/forgot-password", r.Handler.ForgotPasswordHandler)
+		mux.Post("/send-mail-reset-code", r.Handler.SendMailResetCodeHandler)
+		mux.Post("/verify-mail-reset-code", r.Handler.VerifyResetCodeHandler)
+		mux.Post("/reset-password", r.Handler.ResetPasswordHandler)
 
 		// DELETE Requests
 		mux.Delete("/delete-user", r.Handler.DeleteUserHandler)

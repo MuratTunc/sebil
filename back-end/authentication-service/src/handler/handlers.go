@@ -416,7 +416,7 @@ func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) 
 	logger.Info("Password updated successfully for " + req.MailAddress + " in " + time.Since(startTime).String())
 }
 
-func (h *Handler) ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) SendMailResetCodeHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	logger := h.App.Logger
 
@@ -476,4 +476,109 @@ func (h *Handler) ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("If the email exists, a reset link/code has been sent."))
 	logger.Info("Forgot password process completed in " + time.Since(startTime).String())
+}
+
+func (h *Handler) VerifyResetCodeHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	var req models.VerifyResetCodeRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		logger.Error("Failed to decode verify reset code request: " + err.Error())
+		return
+	}
+
+	req.MailAddress = strings.ToLower(strings.TrimSpace(req.MailAddress))
+	req.ResetCode = strings.TrimSpace(req.ResetCode)
+
+	if req.MailAddress == "" || req.ResetCode == "" {
+		http.Error(w, "mail_address and reset_code are required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user exists and resetcode matches
+	var exists bool
+	checkQuery := `SELECT EXISTS(SELECT 1 FROM users WHERE mail_address = $1 AND resetcode = $2)`
+	err := h.App.DB.QueryRow(checkQuery, req.MailAddress, req.ResetCode).Scan(&exists)
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		logger.Error("Failed to query for reset code verification: " + err.Error())
+		return
+	}
+
+	if !exists {
+		http.Error(w, "Invalid mail address or reset code", http.StatusUnauthorized)
+		return
+	}
+
+	// Update reset_verified = true
+	updateQuery := `UPDATE users SET reset_verified = true, updated_at = CURRENT_TIMESTAMP WHERE mail_address = $1`
+	_, err = h.App.DB.Exec(updateQuery, req.MailAddress)
+	if err != nil {
+		http.Error(w, "Failed to update reset_verified flag", http.StatusInternalServerError)
+		logger.Error("Failed to update reset_verified: " + err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Reset code verified successfully"))
+	logger.Info("Reset code verified for " + req.MailAddress + " in " + time.Since(startTime).String())
+}
+
+func (h *Handler) ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	var req models.ResetPasswordRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		logger.Error("Failed to decode reset password request: " + err.Error())
+		return
+	}
+
+	req.MailAddress = strings.ToLower(req.MailAddress)
+
+	// Check if reset_verified is true
+	var resetVerified bool
+	query := `SELECT reset_verified FROM users WHERE mail_address = $1`
+	err := h.App.DB.QueryRow(query, req.MailAddress).Scan(&resetVerified)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+		}
+		logger.Error("Failed to fetch reset_verified status: " + err.Error())
+		return
+	}
+
+	if !resetVerified {
+		http.Error(w, "Reset code not verified", http.StatusUnauthorized)
+		logger.Warn("Password reset attempted without verification for: " + req.MailAddress)
+		return
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Failed to hash new password", http.StatusInternalServerError)
+		logger.Error("Failed to hash new password: " + err.Error())
+		return
+	}
+
+	// Update password and reset reset_verified to false
+	updateQuery := `UPDATE users SET password = $1, reset_verified = false, updated_at = CURRENT_TIMESTAMP WHERE mail_address = $2`
+	_, err = h.App.DB.Exec(updateQuery, hashedPassword, req.MailAddress)
+	if err != nil {
+		http.Error(w, "Failed to update password", http.StatusInternalServerError)
+		logger.Error("Failed to update password in DB: " + err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Password reset successfully! User can use new password."))
+	logger.Info("Password reset successfully for " + req.MailAddress + " in " + time.Since(startTime).String())
 }

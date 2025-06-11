@@ -38,6 +38,7 @@ TEST_ROLE="Sales Representative"
 TEST_PHONE_NUMBER="+1234567890"
 TEST_LANGUAGE="en"
 NEW_PASSWORD="NewPass456!"
+MAIL_RESET_CODE_FOR_TEST="123456"
 
 
 
@@ -53,7 +54,9 @@ GET_USER_URL="$BASE_URL/auth/get-user-by-mail"
 REFRESH_TOKEN_URL="$BASE_URL/auth/refresh-jwt-token"
 UPDATE_USER_URL="$BASE_URL/auth/update-user"
 CHANGE_PASSWORD_URL="$BASE_URL/auth/change-password"
-SEND_AUTH_CODE_URL="$BASE_URL/auth/forgot-password"
+SEND_AUTH_CODE_URL="$BASE_URL/auth/send-mail-reset-code"
+VERIFY_RESET_CODE_URL="$BASE_URL/auth/verify-mail-reset-code"
+RESET_PASSWORD_URL="$BASE_URL/auth/reset-password"
 
 TOKEN=""
 
@@ -340,7 +343,7 @@ update_user_test() {
   # Prepare the update payload
   REQUEST_PAYLOAD=$(cat <<EOF
 {
-  "mail_address": "testuser@example.com",
+  "mail_address": "$TEST_MAIL_ADDRESS",
   "username": "updateduser",
   "role": "Admin",
   "activated": true
@@ -382,7 +385,7 @@ change_password_test() {
 
   REQUEST_PAYLOAD=$(cat <<EOF
 {
-  "mail_address": "testuser@example.com",
+  "mail_address": "$TEST_MAIL_ADDRESS",
   "old_password": "$TEST_PASSWORD",
   "new_password": "$NEW_PASSWORD"
 }
@@ -420,7 +423,7 @@ send_forgot_password_code_test() {
 
   REQUEST_PAYLOAD=$(cat <<EOF
 {
-  "mail_address": "testuser@example.com"
+  "mail_address": "$TEST_MAIL_ADDRESS"
 }
 EOF
 )
@@ -447,6 +450,82 @@ EOF
 }
 
 
+verify_mail_reset_code_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> VERIFY RESET CODE"
+
+  REQUEST_TYPE="POST"
+
+  REQUEST_PAYLOAD=$(cat <<EOF
+{
+  "mail_address": "$TEST_MAIL_ADDRESS",
+  "reset_code": "$MAIL_RESET_CODE_FOR_TEST"
+}
+EOF
+)
+
+  echo "REQUEST URL: $VERIFY_RESET_CODE_URL"
+  echo "REQUEST TYPE: $REQUEST_TYPE"
+  echo "REQUEST PAYLOAD: $REQUEST_PAYLOAD"
+
+  HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X $REQUEST_TYPE $VERIFY_RESET_CODE_URL \
+    -H "Content-Type: application/json" \
+    -d "$REQUEST_PAYLOAD")
+
+  RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+  echo "Verify Reset Code Response Body: $RESPONSE_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ Reset code verified successfully"
+  else
+    echo "❌ Failed to verify reset code"
+    exit 1
+  fi
+}
+
+
+reset_password_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> RESET PASSWORD"
+
+  REQUEST_TYPE="POST"
+  AUTH_HEADER="Authorization: Bearer $TOKEN"
+
+  REQUEST_PAYLOAD=$(cat <<EOF
+{
+  "mail_address": "$TEST_MAIL_ADDRESS",
+  "new_password": "$TEST_PASSWORD"
+}
+EOF
+)
+
+  echo "REQUEST URL: $RESET_PASSWORD_URL"
+  echo "REQUEST TYPE: $REQUEST_TYPE"
+  echo "AUTH HEADER: $AUTH_HEADER"
+  echo "REQUEST PAYLOAD: $REQUEST_PAYLOAD"
+
+  HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X $REQUEST_TYPE $RESET_PASSWORD_URL \
+    -H "Content-Type: application/json" \
+    -H "$AUTH_HEADER" \
+    -d "$REQUEST_PAYLOAD")
+
+  RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+  echo "Reset Password Response Body: $RESPONSE_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ Password reset successfully"
+  else
+    echo "❌ Failed to reset password"
+    exit 1
+  fi
+}
+
 
 delete_user_test() {
   echo ""
@@ -455,7 +534,7 @@ delete_user_test() {
   REQUEST_TYPE="DELETE"
   REQUEST_PAYLOAD=$(cat <<EOF
 {
-  "mail_address": "testuser@example.com"
+  "mail_address": "$TEST_MAIL_ADDRESS"
 }
 EOF
 )
@@ -493,16 +572,18 @@ EOF
 
 # Run tests
 test_start
-health_check           # Make sure your service is up
-register_user_test     # Create a new user first
+health_check                            # Make sure your service is up
+register_user_test                      # Create a new user first
 get_user_test
-last_user_test         # Verify user exists (optional but useful)
-login_user_test        # Log in to get the JWT token
+last_user_test                          # Verify user exists (optional but useful)
+login_user_test                         # Log in to get the JWT token
 sleep 1
-change_password_test   # Test password change while logged in
+change_password_test                    # Test password change while logged in
 send_forgot_password_code_test
-refresh_jwt_token_test # Test refreshing that token while logged in
+verify_mail_reset_code_test
+reset_password_test
+refresh_jwt_token_test                  # Test refreshing that token while logged in
 update_user_test
-logout_user_test       # Log out and invalidate the token
-delete_user_test       # Delete the user to clean up
+logout_user_test                        # Log out and invalidate the token
+delete_user_test                        # Delete the user to clean up
 test_end

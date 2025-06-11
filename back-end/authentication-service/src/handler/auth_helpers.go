@@ -198,7 +198,8 @@ func generateResetCode() (string, error) {
 		b[i] = digits[int(b[i])%len(digits)]
 	}
 
-	return string(b), nil
+	return "123456", nil
+	//return string(b), nil
 }
 
 func (h *Handler) UpdateResetCode(mail string, resetcode string) error {

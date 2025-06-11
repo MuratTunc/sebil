@@ -45,3 +45,13 @@ type ChangePasswordRequest struct {
 type ForgotPasswordRequest struct {
 	MailAddress string `json:"mail_address"`
 }
+
+type VerifyResetCodeRequest struct {
+	MailAddress string `json:"mail_address"`
+	ResetCode   string `json:"reset_code"`
+}
+
+type ResetPasswordRequest struct {
+	MailAddress string `json:"mail_address"`
+	NewPassword string `json:"new_password"`
+}

@@ -24,10 +24,16 @@ type Config struct {
 	EnvPrefix       string
 	InitSQLFilePath string
 	JWTSecret       string
-	UseDB           bool // Flag to determine if DB config is needed
+	JWTExpiration   time.Duration
+	UseDB           bool
 	DB              *sql.DB
 	Logger          *logger.Logger
-	JWTExpiration   time.Duration
+
+	// 📨 SMTP Config
+	SMTPEmail    string
+	SMTPPassword string
+	SMTPHost     string
+	SMTPPort     string
 }
 
 // NewConfig initializes the configuration
@@ -50,8 +56,14 @@ func NewConfig(envPrefix string) *Config {
 		InitSQLFilePath: os.Getenv(fmt.Sprintf("%s_INIT_SQL_FILE_PATH", envPrefix)),
 		JWTSecret:       os.Getenv(fmt.Sprintf("%s_JWTSecret", envPrefix)),
 		JWTExpiration:   time.Duration(jwtExpInt) * time.Hour,
-		DBPort:          FixedDBPort, // fixed port inside the container
+		DBPort:          FixedDBPort,
 		Logger:          logger.NewLogger(logger.INFO),
+
+		// 📨 Load SMTP
+		SMTPEmail:    os.Getenv(fmt.Sprintf("%s_SMTP_EMAIL", envPrefix)),
+		SMTPPassword: os.Getenv(fmt.Sprintf("%s_SMTP_PASSWORD", envPrefix)),
+		SMTPHost:     os.Getenv(fmt.Sprintf("%s_SMTP_HOST", envPrefix)),
+		SMTPPort:     os.Getenv(fmt.Sprintf("%s_SMTP_PORT", envPrefix)),
 	}
 
 	cfg.validateEnvVars()

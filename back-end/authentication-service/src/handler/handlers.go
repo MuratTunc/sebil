@@ -4,6 +4,7 @@ import (
 	"authentication-service/src/config"
 	errors "authentication-service/src/error"
 	"authentication-service/src/models"
+	mailer "authentication-service/src/utils"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -427,34 +428,52 @@ func (h *Handler) ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	req.MailAddress = strings.ToLower(strings.TrimSpace(req.MailAddress))
+	if !strings.Contains(req.MailAddress, "@") {
+		http.Error(w, "Invalid email format", http.StatusBadRequest)
+		return
+	}
 
 	var userID int
 	err := h.App.DB.QueryRow(`SELECT id FROM users WHERE mail_address = $1`, req.MailAddress).Scan(&userID)
-	if err != nil && err != sql.ErrNoRows {
+
+	if err == sql.ErrNoRows {
+		// User not found, respond with generic success message (no info leak)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("If the email exists, a reset link/code has been sent."))
+		logger.Info("Forgot password requested for non-existing email: " + req.MailAddress)
+		return
+	}
+
+	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		logger.Error("Database query failed: " + err.Error())
 		return
 	}
 
-	// Send email only if user exists
-	if err != sql.ErrNoRows {
-		// You can generate a reset code/token and send it
-		resetCode := generateResetCode() // implement this function
-		// Store the code in DB or cache (e.g., Redis), not shown here
-
-		// Simulate sending email (you can replace with your actual mail logic)
-		go func() {
-			err := SendResetMail(req.MailAddress, resetCode) // you must implement this
-			if err != nil {
-				logger.Error("Failed to send reset email to: " + req.MailAddress + " " + err.Error())
-			} else {
-				logger.Info("Reset email sent to " + req.MailAddress)
-			}
-		}()
+	// User found, generate reset code and update DB
+	resetCode, err := generateResetCode()
+	if err != nil {
+		logger.Error("Error generating reset code: " + err.Error())
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
+	err = h.UpdateResetCode(req.MailAddress, resetCode)
+	if err != nil {
+		logger.Error("Failed to update reset code: " + err.Error())
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	go func() {
+		err := mailer.SendPasswordResetMail(req.MailAddress, resetCode, h.App)
+		if err != nil {
+			logger.Error("Failed to send password reset email to: " + req.MailAddress + " " + err.Error())
+		} else {
+			logger.Info("Password reset email sent to " + req.MailAddress)
+		}
+	}()
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("If the email exists, a reset link/code has been sent."))
-
 	logger.Info("Forgot password process completed in " + time.Since(startTime).String())
 }

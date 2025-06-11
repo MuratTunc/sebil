@@ -53,9 +53,12 @@ GET_USER_URL="$BASE_URL/auth/get-user-by-mail"
 REFRESH_TOKEN_URL="$BASE_URL/auth/refresh-jwt-token"
 UPDATE_USER_URL="$BASE_URL/auth/update-user"
 CHANGE_PASSWORD_URL="$BASE_URL/auth/change-password"
+SEND_AUTH_CODE_URL="$BASE_URL/auth/forgot-password"
+
 TOKEN=""
 
 health_check() {
+  echo ""
   echo "===>TEST END POINT--->HEALTH CHECK"
   echo
   echo "REQUEST URL: $HEALTH_CHECK_URL"
@@ -85,6 +88,7 @@ health_check() {
 }
 
 register_user_test() {
+  echo ""
   echo "===>TEST END POINT--->REGISTER NEW USER"
   echo
 
@@ -125,6 +129,7 @@ EOF
 }
 
 last_user_test() {
+  echo ""
   echo "===>TEST END POINT--->GET LAST USER"
   echo
 
@@ -166,6 +171,7 @@ last_user_test() {
 }
 
 login_user_test() {
+  echo ""
   echo "===>TEST END POINT--->LOGIN USER"
   echo
 
@@ -212,6 +218,7 @@ EOF
 }
 
 logout_user_test() {
+  echo ""
   echo "===> TEST END POINT ---> LOGOUT USER"
   echo
 
@@ -244,6 +251,7 @@ logout_user_test() {
 }
 
 refresh_jwt_token_test() {
+  echo ""
   echo "===> TEST ENDPOINT ---> REFRESH JWT TOKEN"
   echo
 
@@ -288,6 +296,7 @@ refresh_jwt_token_test() {
 }
 
 get_user_test() {
+  echo ""
   echo "===> TEST ENDPOINT ---> GET USER BY MAIL ADDRESS"
   echo
 
@@ -400,7 +409,40 @@ EOF
     echo "✅ Password changed successfully"
   else
     echo "❌ Failed to change password"
-    exit 1
+  fi
+}
+
+send_forgot_password_code_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> SEND FORGOT PASSWORD RESET CODE"
+
+  REQUEST_TYPE="POST"
+
+  REQUEST_PAYLOAD=$(cat <<EOF
+{
+  "mail_address": "testuser@example.com"
+}
+EOF
+)
+
+  echo "REQUEST URL: $SEND_AUTH_CODE_URL"
+  echo "REQUEST TYPE: $REQUEST_TYPE"
+  echo "REQUEST PAYLOAD: $REQUEST_PAYLOAD"
+
+  HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X $REQUEST_TYPE $SEND_AUTH_CODE_URL \
+    -H "Content-Type: application/json" \
+    -d "$REQUEST_PAYLOAD")
+
+  RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+  echo "Send Reset Code Response Body: $RESPONSE_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ Reset code sent to email successfully"
+  else
+    echo "❌ Failed to send reset code"
   fi
 }
 
@@ -458,6 +500,7 @@ last_user_test         # Verify user exists (optional but useful)
 login_user_test        # Log in to get the JWT token
 sleep 1
 change_password_test   # Test password change while logged in
+send_forgot_password_code_test
 refresh_jwt_token_test # Test refreshing that token while logged in
 update_user_test
 logout_user_test       # Log out and invalidate the token

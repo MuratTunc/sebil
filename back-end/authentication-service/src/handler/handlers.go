@@ -638,3 +638,83 @@ func (h *Handler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
 }
+
+func (h *Handler) DeactivateUserHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract JWT claims
+	claims, err := ExtractClaimsFromRequest(r, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	role, ok := claims["role"].(string)
+	if !ok || role != "Admin" {
+		http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+		return
+	}
+
+	// Parse request body for mail_address
+	var req struct {
+		MailAddress string `json:"mail_address"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MailAddress == "" {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Perform deactivation
+	query := `UPDATE users SET activated = false, updated_at = CURRENT_TIMESTAMP WHERE mail_address = $1`
+	res, err := h.App.DB.Exec(query, req.MailAddress)
+	if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		http.Error(w, "No user found to deactivate", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "User deactivated successfully")
+}
+
+func (h *Handler) ReactivateUserHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract JWT claims
+	claims, err := ExtractClaimsFromRequest(r, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	role, ok := claims["role"].(string)
+	if !ok || role != "Admin" {
+		http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+		return
+	}
+
+	// Parse request body for mail_address
+	var req struct {
+		MailAddress string `json:"mail_address"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MailAddress == "" {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Perform reactivation
+	query := `UPDATE users SET activated = true, updated_at = CURRENT_TIMESTAMP WHERE mail_address = $1`
+	res, err := h.App.DB.Exec(query, req.MailAddress)
+	if err != nil {
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		http.Error(w, "No user found to reactivate", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "User reactivated successfully")
+}

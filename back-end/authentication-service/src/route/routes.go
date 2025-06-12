@@ -60,6 +60,8 @@ func (r *Routes) publicRoutes(mux *chi.Mux) {
 		mux.Post("/send-mail-reset-code", r.Handler.SendMailResetCodeHandler)
 		mux.Post("/verify-mail-reset-code", r.Handler.VerifyResetCodeHandler)
 		mux.Post("/reset-password", r.Handler.ResetPasswordHandler)
+		mux.Post("/deactivate-user", r.Handler.DeactivateUserHandler)
+		mux.Post("/reactivate-user", r.Handler.ReactivateUserHandler)
 
 		// DELETE Requests
 		mux.Delete("/delete-user", r.Handler.DeleteUserHandler)

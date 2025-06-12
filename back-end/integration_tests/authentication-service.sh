@@ -58,6 +58,8 @@ SEND_AUTH_CODE_URL="$BASE_URL/auth/send-mail-reset-code"
 VERIFY_RESET_CODE_URL="$BASE_URL/auth/verify-mail-reset-code"
 RESET_PASSWORD_URL="$BASE_URL/auth/reset-password"
 LIST_USERS_URL="$BASE_URL/auth/list-users"
+DEACTIVATE_USER_URL="$BASE_URL/auth/deactivate-user"
+REACTIVATE_USER_URL="$BASE_URL/auth/reactivate-user"
 
 TOKEN=""
 
@@ -88,6 +90,7 @@ health_check() {
   fi
 
   echo "✅ Health Check successfully"
+  echo "----------------------------------------"
   echo
 }
 
@@ -128,7 +131,7 @@ EOF
     echo "❌ User registration failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
     exit 1
   fi
-
+  echo "----------------------------------------"
   echo
 }
 
@@ -170,7 +173,7 @@ last_user_test() {
     echo "Expected role: $TEST_ROLE, got: $ACTUAL_ROLE"
     exit 1
   fi
-
+  echo "----------------------------------------"
   echo
 }
 
@@ -219,7 +222,7 @@ EOF
     echo "❌ Login failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
     exit 1
   fi
-
+  echo "----------------------------------------"
   echo
 }
 
@@ -253,7 +256,7 @@ logout_user_test() {
     echo "❌ Logout failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
     exit 1
   fi
-
+  echo "----------------------------------------"
   echo
 }
 
@@ -298,7 +301,7 @@ refresh_jwt_token_test() {
     echo "❌ Refresh failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
     exit 1
   fi
-
+  echo "----------------------------------------"
   echo
 }
 
@@ -333,7 +336,7 @@ get_user_test() {
     echo "❌ Get user failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
     exit 1
   fi
-
+  echo "----------------------------------------"
   echo
 }
 
@@ -378,6 +381,8 @@ EOF
     echo "❌ Failed to update user"
     exit 1
   fi
+  echo "----------------------------------------"
+  echo
 }
 
 change_password_test() {
@@ -417,6 +422,8 @@ EOF
   else
     echo "❌ Failed to change password"
   fi
+  echo "----------------------------------------"
+  echo
 }
 
 send_forgot_password_code_test() {
@@ -451,6 +458,8 @@ EOF
   else
     echo "❌ Failed to send reset code"
   fi
+  echo "----------------------------------------"
+  echo
 }
 
 
@@ -488,6 +497,8 @@ EOF
     echo "❌ Failed to verify reset code"
     exit 1
   fi
+  echo "----------------------------------------"
+  echo
 }
 
 
@@ -528,6 +539,8 @@ EOF
     echo "❌ Failed to reset password"
     exit 1
   fi
+  echo "----------------------------------------"
+  echo
 }
 
 
@@ -576,9 +589,115 @@ list_users_test() {
     echo "❌ Failed to list users. Check if token is valid and user is admin."
     exit 1
   fi
-
+  echo "----------------------------------------"
   echo
 }
+
+deactivate_user_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> DEACTIVATE USER (ADMIN ONLY)"
+  echo
+
+  if [ -z "$DEACTIVATE_USER_URL" ]; then
+    echo "❌ DEACTIVATE_USER_URL is not set. Please define it before running the test."
+    exit 1
+  fi
+
+  if [ -z "$TOKEN" ]; then
+    echo "❌ TOKEN is not set. Make sure login_user_test() was successful."
+    exit 1
+  fi
+
+  if [ -z "$TEST_MAIL_ADDRESS" ]; then
+    echo "❌ TEST_MAIL_ADDRESS is not set. Please define the target user's email."
+    exit 1
+  fi
+
+  echo "REQUEST URL: $DEACTIVATE_USER_URL"
+  echo "REQUEST TYPE: POST"
+  echo "Authorization: Bearer $TOKEN"
+  echo "Payload: { \"mail_address\": \"$TEST_MAIL_ADDRESS\" }"
+
+  DEACTIVATE_USER_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$DEACTIVATE_USER_URL" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"mail_address\": \"$TEST_MAIL_ADDRESS\"}")
+
+  HTTP_BODY=$(echo "$DEACTIVATE_USER_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$DEACTIVATE_USER_RESPONSE" | tail -n1)
+
+  echo "Deactivate User Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ -z "$HTTP_STATUS" ]; then
+    echo "❌ No HTTP status received. Check the URL and the curl command."
+    exit 1
+  fi
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ Successfully deactivated user: $TEST_MAIL_ADDRESS"
+  else
+    echo "❌ Failed to deactivate user. Check if token is valid and user has admin rights."
+    exit 1
+  fi
+
+  echo "----------------------------------------"
+  echo
+}
+
+reactivate_user_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> REACTIVATE USER (ADMIN ONLY)"
+  echo
+
+  if [ -z "$REACTIVATE_USER_URL" ]; then
+    echo "❌ REACTIVATE_USER_URL is not set. Please define it before running the test."
+    exit 1
+  fi
+
+  if [ -z "$TOKEN" ]; then
+    echo "❌ TOKEN is not set. Make sure login_user_test() was successful."
+    exit 1
+  fi
+
+  if [ -z "$TEST_MAIL_ADDRESS" ]; then
+    echo "❌ TEST_MAIL_ADDRESS is not set. Make sure last_user_test() was successful."
+    exit 1
+  fi
+
+  echo "REQUEST URL: $REACTIVATE_USER_URL"
+  echo "REQUEST TYPE: POST"
+  echo "Authorization: Bearer $TOKEN"
+  echo "Mail Address: $TEST_MAIL_ADDRESS"
+
+  REACTIVATE_USER_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$REACTIVATE_USER_URL" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"mail_address\": \"$TEST_MAIL_ADDRESS\"}")
+
+  HTTP_BODY=$(echo "$REACTIVATE_USER_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$REACTIVATE_USER_RESPONSE" | tail -n1)
+
+  echo "Reactivate User Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ -z "$HTTP_STATUS" ]; then
+    echo "❌ No HTTP status received. Check the URL and the curl command."
+    exit 1
+  fi
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ User reactivated successfully."
+  else
+    echo "❌ Failed to reactivate user. Status code: $HTTP_STATUS"
+    exit 1
+  fi
+
+  echo "----------------------------------------"
+  echo
+}
+
+
 
 
 delete_user_test() {
@@ -625,20 +744,41 @@ EOF
 
 
 # Run tests
-test_start
-health_check                            # Make sure your service is up
-register_user_test                      # Create a new user first
-get_user_test
-last_user_test                          # Verify user exists (optional but useful)
-login_user_test                         # Log in to get the JWT token
-list_users_test
-sleep 1
-change_password_test                    # Test password change while logged in
-send_forgot_password_code_test
-verify_mail_reset_code_test
-reset_password_test
-refresh_jwt_token_test                  # Test refreshing that token while logged in
-update_user_test
-logout_user_test                        # Log out and invalidate the token
-delete_user_test                        # Delete the user to clean up
-test_end
+test_start                               # 🟢 Initialize the test suite (start timer or header)
+
+health_check                             # ✅ Check if the service is running and responding
+
+register_user_test                       # 🆕 Register a new user to use in subsequent tests
+
+get_user_test                            # 🔍 Get the registered user's details by mail address
+
+last_user_test                           # 📬 Save the last user's email address to a variable (used later)
+
+login_user_test                          # 🔐 Log in using the registered credentials to obtain JWT token
+
+list_users_test                          # 📋 List all users (admin-only endpoint to verify role/token)
+
+deactivate_user_test                     # 🚫 Deactivate the user account (admin-only)
+
+reactivate_user_test                     # ✅ Reactivate the user account (admin-only)
+
+sleep 1                                  # ⏸️ Pause to ensure changes propagate (e.g. DB/state consistency)
+
+change_password_test                     # 🔐 Change password while authenticated (authorized endpoint)
+
+send_forgot_password_code_test          # 📧 Send a reset code to user’s email for password recovery
+
+verify_mail_reset_code_test             # 🔑 Verify the mail reset code sent to the user
+
+reset_password_test                      # 🔄 Reset the user’s password using verified code
+
+refresh_jwt_token_test                   # ♻️ Refresh the JWT token to maintain session
+
+update_user_test                         # 📝 Update user info like name or preferences
+
+logout_user_test                         # 🚪 Log out the current user and invalidate the token
+
+delete_user_test                         # 🗑️ Delete the user from the database (clean up test user)
+
+test_end                                 # 🔚 End the test suite (show summary or footer)
+

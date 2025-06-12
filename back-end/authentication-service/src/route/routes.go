@@ -6,8 +6,10 @@ import (
 	"authentication-service/src/middleware"
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 )
 
 type Routes struct {
@@ -51,17 +53,28 @@ func (r *Routes) publicRoutes(mux *chi.Mux) {
 		// PUT Requests
 		mux.Put("/update-user", r.Handler.UpdateUserHandler)
 
-		// POST Requests
-		mux.Post("/register", r.Handler.RegisterUserHandler)
-		mux.Post("/login", r.Handler.LoginUserHandler)
+		// POST Requests with custom rate limits
+		mux.With(httprate.LimitByIP(r.Config.RateLimitRegister, r.Config.RateLimitWindowMinutes*time.Minute)).
+			Post("/register", r.Handler.RegisterUserHandler)
+
+		mux.With(httprate.LimitByIP(r.Config.RateLimitLogin, r.Config.RateLimitWindowMinutes*time.Minute)).
+			Post("/login", r.Handler.LoginUserHandler)
+
 		mux.Post("/logout", r.Handler.LogoutUserHandler)
 		mux.Post("/refresh-jwt-token", r.Handler.RefreshTokenHandler)
 		mux.Post("/change-password", r.Handler.ChangePasswordHandler)
-		mux.Post("/send-mail-reset-code", r.Handler.SendMailResetCodeHandler)
+
+		mux.With(httprate.LimitByIP(r.Config.RateLimitResetCode, r.Config.RateLimitWindowMinutes*time.Minute)).
+			Post("/send-mail-reset-code", r.Handler.SendMailResetCodeHandler)
+
 		mux.Post("/verify-mail-reset-code", r.Handler.VerifyResetCodeHandler)
-		mux.Post("/reset-password", r.Handler.ResetPasswordHandler)
+
+		mux.With(httprate.LimitByIP(r.Config.RateLimitResetPassword, r.Config.RateLimitWindowMinutes*time.Minute)).
+			Post("/reset-password", r.Handler.ResetPasswordHandler)
+
 		mux.Post("/deactivate-user", r.Handler.DeactivateUserHandler)
 		mux.Post("/reactivate-user", r.Handler.ReactivateUserHandler)
+		mux.Post("/check-mail-exists", r.Handler.CheckMailExistHandler)
 
 		// DELETE Requests
 		mux.Delete("/delete-user", r.Handler.DeleteUserHandler)

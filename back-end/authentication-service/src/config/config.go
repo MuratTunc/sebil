@@ -34,6 +34,14 @@ type Config struct {
 	SMTPPassword string
 	SMTPHost     string
 	SMTPPort     string
+
+	// Rate Limits
+	RateLimitLogin         int
+	RateLimitRegister      int
+	RateLimitResetCode     int
+	RateLimitResetPassword int
+	RateLimitWindowMinutes time.Duration
+	RateLimitWindowHours   time.Duration
 }
 
 // NewConfig initializes the configuration
@@ -64,6 +72,14 @@ func NewConfig(envPrefix string) *Config {
 		SMTPPassword: os.Getenv(fmt.Sprintf("%s_SMTP_PASSWORD", envPrefix)),
 		SMTPHost:     os.Getenv(fmt.Sprintf("%s_SMTP_HOST", envPrefix)),
 		SMTPPort:     os.Getenv(fmt.Sprintf("%s_SMTP_PORT", envPrefix)),
+
+		// 📨 Load Rate Limits
+		RateLimitLogin:         getEnvAsInt(fmt.Sprintf("%s_RATE_LIMIT_LOGIN", envPrefix), 5),
+		RateLimitRegister:      getEnvAsInt(fmt.Sprintf("%s_RATE_LIMIT_REGISTER", envPrefix), 10),
+		RateLimitResetCode:     getEnvAsInt(fmt.Sprintf("%s_RATE_LIMIT_RESET_CODE", envPrefix), 3),
+		RateLimitResetPassword: getEnvAsInt(fmt.Sprintf("%s_RATE_LIMIT_RESET_PASSWORD", envPrefix), 3),
+		RateLimitWindowMinutes: time.Duration(getEnvAsInt(fmt.Sprintf("%s_RATE_LIMIT_WINDOW_MINUTES", envPrefix), 1)),
+		RateLimitWindowHours:   time.Duration(getEnvAsInt(fmt.Sprintf("%s_RATE_LIMIT_WINDOW_HOURS", envPrefix), 1)),
 	}
 
 	cfg.validateEnvVars()
@@ -72,6 +88,14 @@ func NewConfig(envPrefix string) *Config {
 	cfg.Logger.Info("✅ Configuration initialized successfully")
 
 	return cfg
+}
+
+func getEnvAsInt(key string, defaultVal int) int {
+	valStr := os.Getenv(key)
+	if val, err := strconv.Atoi(valStr); err == nil {
+		return val
+	}
+	return defaultVal
 }
 
 func (c *Config) printEnvVariables() {

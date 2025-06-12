@@ -60,6 +60,7 @@ RESET_PASSWORD_URL="$BASE_URL/auth/reset-password"
 LIST_USERS_URL="$BASE_URL/auth/list-users"
 DEACTIVATE_USER_URL="$BASE_URL/auth/deactivate-user"
 REACTIVATE_USER_URL="$BASE_URL/auth/reactivate-user"
+CHECK_MAIL_EXIST_URL="$BASE_URL/auth/check-mail-exists"
 
 TOKEN=""
 
@@ -292,7 +293,6 @@ refresh_jwt_token_test() {
       echo "🆕 New JWT Token:"
       echo "----------------------------------------"
       echo "$NEW_TOKEN"
-      echo "----------------------------------------"
     else
       echo "❌ Refresh succeeded but new token is missing"
       exit 1
@@ -697,6 +697,91 @@ reactivate_user_test() {
   echo
 }
 
+stress_rate_limit_test() {
+  echo ""
+  echo "===> STRESS TEST ENDPOINT ---> LOGIN RATE LIMIT"
+  echo
+
+  local payload=$(cat <<EOF
+{
+  "mail_address": "$TEST_MAIL_ADDRESS",
+  "password": "$TEST_PASSWORD"
+}
+EOF
+)
+
+  local TOTAL_REQUESTS=120
+  local PARALLEL_REQUESTS=30
+
+  echo "REQUEST URL: $LOGIN_URL"
+  echo "REQUEST TYPE: POST"
+  echo "REQUEST PAYLOAD: $payload"
+  echo "TOTAL REQUESTS: $TOTAL_REQUESTS"
+  echo "PARALLEL REQUESTS: $PARALLEL_REQUESTS"
+  echo "Running stress test..."
+
+  seq $TOTAL_REQUESTS | xargs -P$PARALLEL_REQUESTS -I{} \
+    curl -s -o /dev/null -w "%{http_code}\n" -X POST "$LOGIN_URL" \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+  | sort | uniq -c | while read count status; do
+    case "$status" in
+      200)
+        echo "✅ $count OK (200) - Login success"
+        ;;
+      429)
+        echo "⛔️ $count Too Many Requests (429) - Rate limit hit"
+        ;;
+      *)
+        echo "❌ $count Unexpected status ($status)"
+        ;;
+    esac
+  done
+
+  echo "----------------------------------------"
+  echo
+}
+
+
+check_mail_exist_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> CHECK MAIL EXISTS"
+  echo
+
+  if [ -z "$CHECK_MAIL_EXIST_URL" ]; then
+    echo "❌ CHECK_MAIL_EXIST_URL is not set. Please define it before running the test."
+    exit 1
+  fi
+
+  if [ -z "$TEST_MAIL_ADDRESS" ]; then
+    echo "❌ TEST_MAIL_ADDRESS is not set."
+    exit 1
+  fi
+
+  echo "REQUEST URL: $CHECK_MAIL_EXIST_URL"
+  echo "REQUEST TYPE: POST"
+  echo "Mail Address: $TEST_MAIL_ADDRESS"
+
+  CHECK_MAIL_EXIST_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$CHECK_MAIL_EXIST_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"mail_address\": \"$TEST_MAIL_ADDRESS\"}")
+
+  HTTP_BODY=$(echo "$CHECK_MAIL_EXIST_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$CHECK_MAIL_EXIST_RESPONSE" | tail -n1)
+
+  echo "Check Mail Exists Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ Mail existence check succeeded."
+  else
+    echo "❌ Failed to check mail existence. Status code: $HTTP_STATUS"
+    exit 1
+  fi
+
+  echo "----------------------------------------"
+  echo
+}
 
 
 
@@ -756,6 +841,8 @@ last_user_test                           # 📬 Save the last user's email addre
 
 login_user_test                          # 🔐 Log in using the registered credentials to obtain JWT token
 
+check_mail_exist_test
+
 list_users_test                          # 📋 List all users (admin-only endpoint to verify role/token)
 
 deactivate_user_test                     # 🚫 Deactivate the user account (admin-only)
@@ -777,6 +864,8 @@ refresh_jwt_token_test                   # ♻️ Refresh the JWT token to maint
 update_user_test                         # 📝 Update user info like name or preferences
 
 logout_user_test                         # 🚪 Log out the current user and invalidate the token
+
+stress_rate_limit_test
 
 delete_user_test                         # 🗑️ Delete the user from the database (clean up test user)
 

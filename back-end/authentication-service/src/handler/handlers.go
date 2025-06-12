@@ -634,12 +634,17 @@ func (h *Handler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 		users = append(users, u)
 	}
 
-	logger.Info("✅ Admin listed all users in " + time.Since(startTime).String())
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
+	logger.Info("✅ Admin listed all users in " + time.Since(startTime).String())
+
 }
 
 func (h *Handler) DeactivateUserHandler(w http.ResponseWriter, r *http.Request) {
+
+	startTime := time.Now()
+	logger := h.App.Logger
+
 	// Extract JWT claims
 	claims, err := ExtractClaimsFromRequest(r, h.App.JWTSecret)
 	if err != nil {
@@ -676,10 +681,15 @@ func (h *Handler) DeactivateUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, "User deactivated successfully")
+	w.Write([]byte("User deactivated successfully!"))
+	logger.Info(" User deactivated successfully " + req.MailAddress + " in " + time.Since(startTime).String())
 }
 
 func (h *Handler) ReactivateUserHandler(w http.ResponseWriter, r *http.Request) {
+
+	startTime := time.Now()
+	logger := h.App.Logger
+
 	// Extract JWT claims
 	claims, err := ExtractClaimsFromRequest(r, h.App.JWTSecret)
 	if err != nil {
@@ -716,5 +726,45 @@ func (h *Handler) ReactivateUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, "User reactivated successfully")
+	w.Write([]byte("User reactivated successfully!"))
+	logger.Info(" User reactivated successfully " + req.MailAddress + " in " + time.Since(startTime).String())
+}
+
+func (h *Handler) CheckMailExistHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	var req struct {
+		MailAddress string `json:"mail_address"`
+	}
+
+	// Decode JSON request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MailAddress == "" {
+		http.Error(w, "Invalid request body or missing mail_address", http.StatusBadRequest)
+		return
+	}
+
+	// Query user existence
+	query := `SELECT 1 FROM users WHERE mail_address = $1 LIMIT 1`
+	row := h.App.DB.QueryRow(query, req.MailAddress)
+
+	var exists int
+	err := row.Scan(&exists)
+	if err == sql.ErrNoRows {
+		// User does not exist
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Email does not exist in DB."))
+		logger.Info("Checked non-existent email: " + req.MailAddress + " in " + time.Since(startTime).String())
+		return
+	} else if err != nil {
+		// DB error
+		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		logger.Error("DB error while checking email " + req.MailAddress + ": " + err.Error())
+		return
+	}
+
+	// User exists
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email exists in DB."))
+	logger.Info("Checked existing email: " + req.MailAddress + " in " + time.Since(startTime).String())
 }

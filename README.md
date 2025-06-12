@@ -69,6 +69,27 @@ Body: { mailAddress, password }
 | `Customer`          | View own profile/orders, update account settings, limited access to features |
 
 
+## 🔐 Call with JWT Token?
+
+Some endpoints in the authentication service **require a valid JWT token** to ensure that the caller is authenticated and authorized. Whether you need to send a token depends on the **endpoint's access level** and **user role**.
+
+### ✅ Endpoints that **require** JWT Token
+
+| Endpoint                        | Method | Role Required | Description                              |
+|--------------------------------|--------|----------------|------------------------------------------|
+| `/auth/logout`                 | POST   | Any Logged-in  | Invalidate a session                     |
+| `/auth/refresh-jwt-token`     | POST   | Any Logged-in  | Refresh JWT token                        |
+| `/auth/change-password`       | POST   | Any Logged-in  | Change password                          |
+| `/auth/deactivate-user`       | POST   | Admin only     | Deactivate user account                  |
+| `/auth/reactivate-user`       | POST   | Admin only     | Reactivate a user account                |
+| `/auth/update-user`           | PUT    | Admin or User  | Update user info                         |
+| `/auth/delete-user`           | DELETE | Admin only     | Permanently delete a user                |
+
+**Send the JWT token in the `Authorization` header:**
+
+```http
+Authorization: Bearer <your_jwt_token>
+
 
 
 # HANDLERS
@@ -404,3 +425,8 @@ Body: { mailAddress, password }
 
 ✅ Delete user cleanly using the username
 ```
+
+
+# API Protection
+
+“We use rate limiting and middleware-based API security controls to protect our endpoints from abuse and overuse.”

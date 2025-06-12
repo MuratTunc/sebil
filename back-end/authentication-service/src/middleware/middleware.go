@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 )
 
 type Middleware struct {
@@ -22,6 +24,11 @@ func NewMiddleware(cfg *config.Config) *Middleware {
 	}
 }
 
+func (m *Middleware) RateLimiterMiddleware() func(http.Handler) http.Handler {
+	// Limit each IP to 100 requests per 1 minute (can tune per endpoint later)
+	return httprate.LimitByIP(100, 1*time.Minute)
+}
+
 // SetupMiddleware sets up all global middleware
 func (m *Middleware) SetupMiddleware(mux *chi.Mux) {
 
@@ -29,6 +36,9 @@ func (m *Middleware) SetupMiddleware(mux *chi.Mux) {
 	mux.Use(middleware.Heartbeat("/ping"))
 	mux.Use(middleware.Recoverer)
 	mux.Use(middleware.Logger)
+
+	// Add global rate limiting
+	mux.Use(m.RateLimiterMiddleware())
 
 	// Log successful initialization of middleware
 	m.Config.Logger.Info("✅ Middleware initialized successfully")

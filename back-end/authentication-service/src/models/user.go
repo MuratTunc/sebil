@@ -36,6 +36,10 @@ type DeleteRequest struct {
 	MailAddress string `json:"mail_address"`
 }
 
+type VerifyMailAddressRequest struct {
+	MailAddress string `json:"mail_address"`
+}
+
 type ChangePasswordRequest struct {
 	MailAddress string `json:"mail_address"`
 	OldPassword string `json:"old_password"`
@@ -43,6 +47,10 @@ type ChangePasswordRequest struct {
 }
 
 type ForgotPasswordRequest struct {
+	MailAddress string `json:"mail_address"`
+}
+
+type CheckMailAddressRequest struct {
 	MailAddress string `json:"mail_address"`
 }
 

@@ -245,8 +245,25 @@ func generateResetCode() (string, error) {
 		b[i] = digits[int(b[i])%len(digits)]
 	}
 
-	return "123456", nil
-	//return string(b), nil
+	//return "123456", nil
+	return string(b), nil
+}
+
+func generateAuthCode() (string, error) {
+	const digits = "0123456789"
+	const length = 6
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", errors.New("Failed to generate authentication code: " + err.Error())
+	}
+
+	for i := 0; i < length; i++ {
+		b[i] = digits[int(b[i])%len(digits)]
+	}
+
+	//return "123456", nil
+	return string(b), nil
 }
 
 func (h *Handler) UpdateResetCode(mail string, resetcode string) error {
@@ -260,7 +277,23 @@ func (h *Handler) UpdateResetCode(mail string, resetcode string) error {
 		return err
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("no user found with mail_address %s", mail)
+		return fmt.Errorf("No user found with mail_address %s", mail)
+	}
+	return nil
+}
+
+func (h *Handler) UpdateAuthenticationCode(mail string, authentication_code string) error {
+	query := `UPDATE users SET authentication_code = $1, updated_at = NOW() WHERE mail_address = $2`
+	res, err := h.App.DB.Exec(query, authentication_code, mail)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("No user found with mail_address %s", mail)
 	}
 	return nil
 }

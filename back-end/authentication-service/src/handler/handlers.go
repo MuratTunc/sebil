@@ -637,7 +637,6 @@ func (h *Handler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
 	logger.Info("✅ Admin listed all users in " + time.Since(startTime).String())
-
 }
 
 func (h *Handler) DeactivateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -734,13 +733,12 @@ func (h *Handler) CheckMailExistHandler(w http.ResponseWriter, r *http.Request) 
 	startTime := time.Now()
 	logger := h.App.Logger
 
-	var req struct {
-		MailAddress string `json:"mail_address"`
-	}
+	var req models.CheckMailAddressRequest
 
-	// Decode JSON request body
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MailAddress == "" {
-		http.Error(w, "Invalid request body or missing mail_address", http.StatusBadRequest)
+	// Parse request body
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		logger.Error("Invalid request body or missing mail_address: " + err.Error())
 		return
 	}
 
@@ -767,4 +765,71 @@ func (h *Handler) CheckMailExistHandler(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Email exists in DB."))
 	logger.Info("Checked existing email: " + req.MailAddress + " in " + time.Since(startTime).String())
+}
+
+func (h *Handler) VerifyMailAddressHandler(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	logger := h.App.Logger
+
+	// Parse request
+	var req models.VerifyMailAddressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		logger.Error("Failed to decode verify mail address request: " + err.Error())
+		return
+	}
+
+	// Normalize email
+	req.MailAddress = strings.ToLower(strings.TrimSpace(req.MailAddress))
+	if !strings.Contains(req.MailAddress, "@") {
+		http.Error(w, "Invalid email format", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user exists
+	var userID int
+	err := h.App.DB.QueryRow(`SELECT id FROM users WHERE mail_address = $1`, req.MailAddress).Scan(&userID)
+	if err == sql.ErrNoRows {
+		// No info leak
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("If the email exists, a verification code has been sent."))
+		logger.Info("Verification requested for non-existing email: " + req.MailAddress)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		logger.Error("Database query failed: " + err.Error())
+		return
+	}
+
+	// Generate authentication code
+	authCode, err := generateAuthCode()
+	if err != nil {
+		logger.Error("Error generating auth code: " + err.Error())
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Update DB
+	err = h.UpdateAuthenticationCode(req.MailAddress, authCode)
+	if err != nil {
+		logger.Error("Failed to update authentication code: " + err.Error())
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Send email
+	go func() {
+		err := mailer.SendAuthenticationCode(req.MailAddress, authCode, h.App)
+		if err != nil {
+			logger.Error("Failed to send verification email to: " + req.MailAddress + " " + err.Error())
+		} else {
+			logger.Info("Verification email sent to " + req.MailAddress)
+		}
+	}()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("If the email exists, a verification code has been sent."))
+	logger.Info("Mail verification process completed in " + time.Since(startTime).String())
 }

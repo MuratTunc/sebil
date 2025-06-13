@@ -867,6 +867,8 @@ logout_user_test                         # 🚪 Log out the current user and inv
 
 stress_rate_limit_test
 
+sleep 10                                  # ⏸️ Pause to ensure stress test is finished.
+
 delete_user_test                         # 🗑️ Delete the user from the database (clean up test user)
 
 test_end                                 # 🔚 End the test suite (show summary or footer)

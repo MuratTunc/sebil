@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,10 +28,18 @@ type UpdateQueryResult struct {
 }
 
 var (
-	ErrMissingAuthHeader = errors.New("missing Authorization header")
-	ErrInvalidAuthHeader = errors.New("invalid Authorization header format")
-	ErrInvalidToken      = errors.New("invalid or expired token")
-	ErrMissingRoleClaim  = errors.New("missing role claim in token")
+	// Standardized JWT/Authorization-related errors
+	ErrAuthorizationHeader  = errors.New("authorization header is missing") // use this as primary
+	ErrAuthorizationInvalid = errors.New("authorization header format must be Bearer {token}")
+	ErrInvalidJWT           = errors.New("invalid or expired JWT token")
+
+	// Optional aliases (if needed for compatibility or readability)
+	ErrMissingAuthHeader = ErrAuthorizationHeader
+	ErrInvalidAuthHeader = ErrAuthorizationInvalid
+
+	// Specific claim-related error
+	ErrMissingRoleClaim = errors.New("missing role claim in token")
+	ErrInvalidToken     = ErrInvalidJWT // can alias for consistency
 )
 
 // ExtractClaimsFromRequest extracts JWT claims (MapClaims) from Authorization header
@@ -132,8 +141,14 @@ func insertUser(db *sql.DB, user models.UserRequest) error {
 }
 
 // Helper function to update login_status in DB
-func updateLoginStatus(db *sql.DB, userID string, status bool) error {
-	_, err := db.Exec("UPDATE users SET login_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", status, userID)
+func updateLoginStatus(db *sql.DB, userID int, status bool) error {
+	_, err := db.Exec(`
+		UPDATE users
+		SET login_status = $1,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`, status, userID)
+
 	return err
 }
 
@@ -296,4 +311,63 @@ func (h *Handler) UpdateAuthenticationCode(mail string, authentication_code stri
 		return fmt.Errorf("No user found with mail_address %s", mail)
 	}
 	return nil
+}
+
+func isUserIDValid(db *sql.DB, userID int) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND activated = true)`
+	err := db.QueryRow(query, userID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func GetValidatedUserIDRole(r *http.Request, db *sql.DB, jwtSecret string) (int, string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return 0, "", ErrAuthorizationHeader
+	}
+
+	var tokenStr string
+	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
+	if tokenStr == "" {
+		return 0, "", ErrAuthorizationInvalid
+	}
+
+	// Parse JWT
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return 0, "", ErrInvalidJWT
+	}
+
+	// Get user ID
+	userIDStr, ok := claims["user_id"].(string)
+	if !ok {
+		return 0, "", fmt.Errorf("missing or invalid user_id in token")
+	}
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		return 0, "", fmt.Errorf("userID conversion error: %w", err)
+	}
+
+	// Get role
+	role, ok := claims["role"].(string)
+	if !ok {
+		return 0, "", fmt.Errorf("missing or invalid role in token")
+	}
+
+	// Check user in DB
+	exists, err := isUserIDValid(db, userID)
+	if err != nil {
+		return 0, "", fmt.Errorf("DB error: %w", err)
+	}
+	if !exists {
+		return 0, "", errors.New("user does not exist or is deactivated")
+	}
+
+	return userID, role, nil
 }

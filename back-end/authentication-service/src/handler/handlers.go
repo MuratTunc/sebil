@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -182,11 +183,31 @@ func (h *Handler) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the token to get userID (implement parseUserIDFromJWT with your JWT lib)
-	userID, err := parseUserIDFromJWT(tokenStr, h.App.JWTSecret)
+	// Parse the token to get userID
+	userIDStr, err := parseUserIDFromJWT(tokenStr, h.App.JWTSecret)
 	if err != nil {
 		http.Error(w, errors.ErrInvalidJWT, http.StatusUnauthorized)
 		logger.Error("Logout failed: invalid token - " + err.Error())
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+		logger.Error("Logout failed: userID conversion error - " + err.Error())
+		return
+	}
+
+	// Check if user exists and is activated
+	exists, err := isUserIDValid(h.App.DB, userID)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		logger.Error("Logout failed: DB check error - " + err.Error())
+		return
+	}
+	if !exists {
+		http.Error(w, "Invalid or deactivated user", http.StatusUnauthorized)
+		logger.Warn("Logout failed: user does not exist or is deactivated")
 		return
 	}
 
@@ -207,20 +228,23 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	logger := h.App.Logger
 
+	// Get the token from Authorization header (Bearer token)
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		http.Error(w, errors.ErrTokenMissing, http.StatusUnauthorized)
+		http.Error(w, errors.ErrAuthorizationHeader, http.StatusUnauthorized)
+		logger.Error("Logout failed: missing Authorization header")
 		return
 	}
 
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		http.Error(w, errors.ErrTokenInvalid, http.StatusUnauthorized)
+	var tokenStr string
+	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
+	if tokenStr == "" {
+		http.Error(w, errors.ErrAuthorizationInvalid, http.StatusUnauthorized)
+		logger.Error("Logout failed: invalid Authorization header format")
 		return
 	}
-	tokenString := parts[1]
 
-	userIDStr, err := parseUserIDFromJWT(tokenString, h.App.JWTSecret)
+	userIDStr, err := parseUserIDFromJWT(tokenStr, h.App.JWTSecret)
 	if err != nil {
 		http.Error(w, errors.ErrTokenInvalid, http.StatusUnauthorized)
 		logger.Error("Failed to parse token in refresh: " + err.Error())
@@ -234,7 +258,20 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 🆕 Fetch user role
+	// ✅ Check if user ID is valid
+	isValid, err := isUserIDValid(h.App.DB, userID)
+	if err != nil {
+		http.Error(w, "Error validating user ID", http.StatusInternalServerError)
+		logger.Error("DB error validating user: " + err.Error())
+		return
+	}
+	if !isValid {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		logger.Warn("Refresh attempted with invalid user ID")
+		return
+	}
+
+	// Fetch user role
 	role, err := fetchUserRole(h.App.DB, userID)
 	if err != nil {
 		http.Error(w, "Failed to fetch user role", http.StatusInternalServerError)
@@ -242,7 +279,7 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 🆕 Generate new token including role
+	// Generate new token including role
 	newToken, err := generateJWT(userID, role, h.App.JWTSecret, h.App.JWTExpiration)
 	if err != nil {
 		http.Error(w, errors.ErrTokenFailure, http.StatusInternalServerError)
@@ -372,9 +409,52 @@ func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) 
 	startTime := time.Now()
 	logger := h.App.Logger
 
-	var req models.ChangePasswordRequest
+	// Get the token from Authorization header (Bearer token)
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, errors.ErrAuthorizationHeader, http.StatusUnauthorized)
+		logger.Error("Logout failed: missing Authorization header")
+		return
+	}
 
-	// Parse request body
+	var tokenStr string
+	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
+	if tokenStr == "" {
+		http.Error(w, errors.ErrAuthorizationInvalid, http.StatusUnauthorized)
+		logger.Error("Logout failed: invalid Authorization header format")
+		return
+	}
+
+	// Parse user ID from token
+	userIDStr, err := parseUserIDFromJWT(tokenStr, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		logger.Error("JWT parse error: " + err.Error())
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID in token", http.StatusUnauthorized)
+		logger.Error("User ID conversion error: " + err.Error())
+		return
+	}
+
+	// 🔎 Step 2: Validate user ID
+	isValid, err := isUserIDValid(h.App.DB, userID)
+	if err != nil {
+		http.Error(w, "Error validating user ID", http.StatusInternalServerError)
+		logger.Error("User validation error: " + err.Error())
+		return
+	}
+	if !isValid {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		logger.Warn("Password change attempt with invalid user ID")
+		return
+	}
+
+	// 🔄 Step 3: Parse request body
+	var req models.ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		logger.Error("Failed to decode change password request: " + err.Error())
@@ -383,10 +463,10 @@ func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) 
 
 	req.MailAddress = strings.ToLower(req.MailAddress)
 
-	// Get existing hashed password from DB
-	var hashedPassword string
-	query := `SELECT password FROM users WHERE mail_address = $1`
-	err := h.App.DB.QueryRow(query, req.MailAddress).Scan(&hashedPassword)
+	// Check if mail address matches the authenticated user
+	var dbMailAddress, hashedPassword string
+	query := `SELECT mail_address, password FROM users WHERE id = $1`
+	err = h.App.DB.QueryRow(query, userID).Scan(&dbMailAddress, &hashedPassword)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -397,24 +477,30 @@ func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Verify old password
-	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(req.OldPassword)); err != nil {
-		http.Error(w, "Old password is incorrect", http.StatusUnauthorized)
-		logger.Warn("Incorrect old password attempt for " + req.MailAddress)
+	if dbMailAddress != req.MailAddress {
+		http.Error(w, "Email mismatch", http.StatusUnauthorized)
+		logger.Warn("Email in request does not match JWT user")
 		return
 	}
 
-	// Hash the new password
+	// 🔐 Step 4: Verify old password
+	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(req.OldPassword)); err != nil {
+		http.Error(w, "Old password is incorrect", http.StatusUnauthorized)
+		logger.Warn("Incorrect old password attempt for user ID " + userIDStr)
+		return
+	}
+
+	// 🔐 Step 5: Hash new password
 	newHashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "Failed to hash new password", http.StatusInternalServerError)
-		logger.Error("Failed to hash new password: " + err.Error())
+		logger.Error("Password hashing error: " + err.Error())
 		return
 	}
 
-	// Update password in DB
-	updateQuery := `UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE mail_address = $2`
-	_, err = h.App.DB.Exec(updateQuery, newHashedPassword, req.MailAddress)
+	// 📝 Step 6: Update password
+	updateQuery := `UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	_, err = h.App.DB.Exec(updateQuery, newHashedPassword, userID)
 	if err != nil {
 		http.Error(w, "Failed to update password", http.StatusInternalServerError)
 		logger.Error("Failed to update password in DB: " + err.Error())
@@ -423,7 +509,7 @@ func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) 
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Password changed successfully"))
-	logger.Info("Password updated successfully for " + req.MailAddress + " in " + time.Since(startTime).String())
+	logger.Info("Password changed for user ID " + userIDStr + " in " + time.Since(startTime).String())
 }
 
 func (h *Handler) SendMailResetCodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -640,48 +726,57 @@ func (h *Handler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeactivateUserHandler(w http.ResponseWriter, r *http.Request) {
-
 	startTime := time.Now()
 	logger := h.App.Logger
 
-	// Extract JWT claims
-	claims, err := ExtractClaimsFromRequest(r, h.App.JWTSecret)
+	// ✅ Get userID and role from JWT (validated + active user)
+	userID, role, err := GetValidatedUserIDRole(r, h.App.DB, h.App.JWTSecret)
 	if err != nil {
 		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		logger.Error("Deactivation failed: " + err.Error())
 		return
 	}
 
-	role, ok := claims["role"].(string)
-	if !ok || role != "Admin" {
-		http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
-		return
-	}
-
-	// Parse request body for mail_address
+	// ✅ Read optional target_user_id from request body
 	var req struct {
-		MailAddress string `json:"mail_address"`
+		TargetUserID int `json:"target_user_id"` // optional
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MailAddress == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		logger.Error("Deactivation failed: invalid JSON - " + err.Error())
 		return
 	}
 
-	// Perform deactivation
-	query := `UPDATE users SET activated = false, updated_at = CURRENT_TIMESTAMP WHERE mail_address = $1`
-	res, err := h.App.DB.Exec(query, req.MailAddress)
+	// ✅ Determine target user
+	targetID := userID // default: self-deactivation
+	if req.TargetUserID != 0 {
+		if role != "Admin" {
+			http.Error(w, "Forbidden: only Admins can deactivate other users", http.StatusForbidden)
+			logger.Error(fmt.Sprintf("User %d attempted unauthorized deactivation of user %d", userID, req.TargetUserID))
+			return
+		}
+		targetID = req.TargetUserID
+	}
+
+	// ✅ Deactivate the target user
+	query := `UPDATE users SET activated = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1`
+	res, err := h.App.DB.Exec(query, targetID)
 	if err != nil {
-		http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		logger.Error(fmt.Sprintf("DB error during deactivation of user %d: %v", targetID, err))
 		return
 	}
-	rowsAffected, err := res.RowsAffected()
-	if err != nil || rowsAffected == 0 {
-		http.Error(w, "No user found to deactivate", http.StatusNotFound)
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "User not found", http.StatusNotFound)
+		logger.Error(fmt.Sprintf("Deactivation failed: user %d not found", targetID))
 		return
 	}
 
+	// ✅ Success
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("User deactivated successfully!"))
-	logger.Info(" User deactivated successfully " + req.MailAddress + " in " + time.Since(startTime).String())
+	w.Write([]byte("User deactivated successfully"))
+	logger.Error(fmt.Sprintf("User %d (role: %s) deactivated user %d in %v", userID, role, targetID, time.Since(startTime)))
 }
 
 func (h *Handler) ReactivateUserHandler(w http.ResponseWriter, r *http.Request) {

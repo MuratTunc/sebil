@@ -60,6 +60,35 @@ Body: { mailAddress, password }
 
 ```
 
+# DATABASE 
+
+### `users` Table Schema
+
+``` bash
+FILES:
+/authentication-service/src/sql/init_users_table.sql
+/authentication-service/src/database/connection.go
+/authentication-service/src/models/user.go
+```
+
+| Column               | Data Type       | Constraints / Description                                           |
+|----------------------|----------------|----------------------------------------------------------------------|
+| id                   | SERIAL          | Primary Key                                                          |
+| username             | VARCHAR(100)    | Not Null, Unique                                                     |
+| mail_address         | VARCHAR(255)    | Not Null, Unique                                                     |
+| password             | TEXT            | Not Null                                                             |
+| role                 | VARCHAR(50)     | Not Null, must be one of: `'Admin'`, `'Sales Representative'`, `'Customer'` |
+| phone_number         | VARCHAR(20)     | Optional                                                              |
+| language_preference  | VARCHAR(10)     | Default `'en'`                                                       |
+| resetcode            | VARCHAR(20)     | Optional                                                              |
+| reset_verified       | BOOLEAN         | Not Null, Default `false`                                            |
+| authentication_code  | VARCHAR(20)     | Optional                                                              |
+| activated            | BOOLEAN         | Not Null, Default `false`                                            |
+| login_status         | BOOLEAN         | Not Null, Default `false`                                            |
+| created_at           | TIMESTAMP       | Not Null, Default `CURRENT_TIMESTAMP`                                |
+| updated_at           | TIMESTAMP       | Not Null, Default `CURRENT_TIMESTAMP`                                |
+
+
 ### 🧑‍💼 Example Use Cases
 
 | Role                | Permissions                                                                 |

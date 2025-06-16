@@ -38,8 +38,12 @@ var (
 	ErrInvalidAuthHeader = ErrAuthorizationInvalid
 
 	// Specific claim-related error
-	ErrMissingRoleClaim = errors.New("missing role claim in token")
+	ErrMissingRoleClaim = errors.New("missing or invalid role in token")
 	ErrInvalidToken     = ErrInvalidJWT // can alias for consistency
+
+	ErrUserNotExist       = errors.New("user does not exist or is deactivated")
+	ErrUserDBCheck        = errors.New("db error while validating user in DB")
+	ErrUserIDConversition = errors.New("userID conversion error")
 )
 
 // ExtractClaimsFromRequest extracts JWT claims (MapClaims) from Authorization header
@@ -347,26 +351,26 @@ func GetValidatedUserIDRole(r *http.Request, db *sql.DB, jwtSecret string) (int,
 	// Get user ID
 	userIDStr, ok := claims["user_id"].(string)
 	if !ok {
-		return 0, "", fmt.Errorf("missing or invalid user_id in token")
+		return 0, "", ErrMissingRoleClaim
 	}
 	userID, err := strconv.Atoi(userIDStr)
 	if err != nil {
-		return 0, "", fmt.Errorf("userID conversion error: %w", err)
+		return 0, "", ErrUserIDConversition
 	}
 
 	// Get role
 	role, ok := claims["role"].(string)
 	if !ok {
-		return 0, "", fmt.Errorf("missing or invalid role in token")
+		return 0, "", ErrMissingRoleClaim
 	}
 
 	// Check user in DB
 	exists, err := isUserIDValid(db, userID)
 	if err != nil {
-		return 0, "", fmt.Errorf("DB error: %w", err)
+		return 0, "", ErrUserDBCheck
 	}
 	if !exists {
-		return 0, "", errors.New("user does not exist or is deactivated")
+		return 0, "", ErrUserNotExist
 	}
 
 	return userID, role, nil

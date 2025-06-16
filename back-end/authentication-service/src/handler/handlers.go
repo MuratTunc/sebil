@@ -168,46 +168,10 @@ func (h *Handler) LogoutUserHandler(w http.ResponseWriter, r *http.Request) {
 	logger := h.App.Logger
 
 	// Get the token from Authorization header (Bearer token)
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, errors.ErrAuthorizationHeader, http.StatusUnauthorized)
-		logger.Error("Logout failed: missing Authorization header")
-		return
-	}
-
-	var tokenStr string
-	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
-	if tokenStr == "" {
-		http.Error(w, errors.ErrAuthorizationInvalid, http.StatusUnauthorized)
-		logger.Error("Logout failed: invalid Authorization header format")
-		return
-	}
-
-	// Parse the token to get userID
-	userIDStr, err := parseUserIDFromJWT(tokenStr, h.App.JWTSecret)
+	userID, _, err := GetValidatedUserIDRole(r, h.App.DB, h.App.JWTSecret)
 	if err != nil {
-		http.Error(w, errors.ErrInvalidJWT, http.StatusUnauthorized)
-		logger.Error("Logout failed: invalid token - " + err.Error())
-		return
-	}
-
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		http.Error(w, "Invalid user ID format", http.StatusBadRequest)
-		logger.Error("Logout failed: userID conversion error - " + err.Error())
-		return
-	}
-
-	// Check if user exists and is activated
-	exists, err := isUserIDValid(h.App.DB, userID)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		logger.Error("Logout failed: DB check error - " + err.Error())
-		return
-	}
-	if !exists {
-		http.Error(w, "Invalid or deactivated user", http.StatusUnauthorized)
-		logger.Warn("Logout failed: user does not exist or is deactivated")
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		logger.Error("Logout failed: " + err.Error())
 		return
 	}
 
@@ -229,45 +193,10 @@ func (h *Handler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	logger := h.App.Logger
 
 	// Get the token from Authorization header (Bearer token)
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, errors.ErrAuthorizationHeader, http.StatusUnauthorized)
-		logger.Error("Logout failed: missing Authorization header")
-		return
-	}
-
-	var tokenStr string
-	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
-	if tokenStr == "" {
-		http.Error(w, errors.ErrAuthorizationInvalid, http.StatusUnauthorized)
-		logger.Error("Logout failed: invalid Authorization header format")
-		return
-	}
-
-	userIDStr, err := parseUserIDFromJWT(tokenStr, h.App.JWTSecret)
+	userID, _, err := GetValidatedUserIDRole(r, h.App.DB, h.App.JWTSecret)
 	if err != nil {
-		http.Error(w, errors.ErrTokenInvalid, http.StatusUnauthorized)
-		logger.Error("Failed to parse token in refresh: " + err.Error())
-		return
-	}
-
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		http.Error(w, "Invalid user ID in token", http.StatusUnauthorized)
-		logger.Error("User ID conversion error: " + err.Error())
-		return
-	}
-
-	// ✅ Check if user ID is valid
-	isValid, err := isUserIDValid(h.App.DB, userID)
-	if err != nil {
-		http.Error(w, "Error validating user ID", http.StatusInternalServerError)
-		logger.Error("DB error validating user: " + err.Error())
-		return
-	}
-	if !isValid {
-		http.Error(w, "User not found", http.StatusUnauthorized)
-		logger.Warn("Refresh attempted with invalid user ID")
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		logger.Error("Logout failed: " + err.Error())
 		return
 	}
 

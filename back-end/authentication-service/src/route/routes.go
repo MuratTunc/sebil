@@ -43,7 +43,7 @@ func (r *Routes) Routes() http.Handler {
 }
 
 func (r *Routes) publicRoutes(mux *chi.Mux) {
-	mux.Route("/auth", func(mux chi.Router) {
+	mux.Route("/api/v1/auth", func(mux chi.Router) {
 		// GET Requests
 		mux.Get("/health", r.Handler.HealthCheckHandler)
 		mux.Get("/last-user", r.Handler.GetLastUserHandler)

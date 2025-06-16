@@ -43,7 +43,7 @@ MAIL_RESET_CODE_FOR_TEST="123456"
 
 
 # Define API URLs
-BASE_URL="http://localhost:$AUTHENTICATION_SERVICE_PORT"
+BASE_URL="http://localhost:$AUTHENTICATION_SERVICE_PORT/api/v1/"
 HEALTH_CHECK_URL="$BASE_URL/auth/health"
 REGISTER_URL="$BASE_URL/auth/register"
 LAST_USER_URL="$BASE_URL/auth/last-user"
@@ -782,6 +782,47 @@ check_mail_exist_test() {
   echo "----------------------------------------"
   echo
 }
+
+verify_mail_address_test() {
+  echo ""
+  echo "===> TEST ENDPOINT ---> VERIFY MAIL ADDRESS"
+  echo
+
+  if [ -z "$VERIFY_MAIL_URL" ]; then
+    echo "❌ VERIFY_MAIL_URL is not set. Please define it before running the test."
+    exit 1
+  fi
+
+  if [ -z "$TEST_MAIL_ADDRESS" ]; then
+    echo "❌ TEST_MAIL_ADDRESS is not set."
+    exit 1
+  fi
+
+  echo "REQUEST URL: $VERIFY_MAIL_URL"
+  echo "REQUEST TYPE: POST"
+  echo "Mail Address: $TEST_MAIL_ADDRESS"
+
+  VERIFY_MAIL_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$VERIFY_MAIL_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"mail_address\": \"$TEST_MAIL_ADDRESS\"}")
+
+  HTTP_BODY=$(echo "$VERIFY_MAIL_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$VERIFY_MAIL_RESPONSE" | tail -n1)
+
+  echo "Verify Mail Response Body: $HTTP_BODY"
+  echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ "$HTTP_STATUS" -eq 200 ]; then
+    echo "✅ Mail verification request succeeded."
+  else
+    echo "❌ Mail verification failed. Status code: $HTTP_STATUS"
+    exit 1
+  fi
+
+  echo "----------------------------------------"
+  echo
+}
+
 
 
 

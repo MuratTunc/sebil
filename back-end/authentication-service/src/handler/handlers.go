@@ -256,6 +256,15 @@ func (h *Handler) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	logger := h.App.Logger
 
+	// Validate JWT and get userID + role from token
+	userID, role, err := GetValidatedUserIDRole(r, h.App.DB, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		logger.Error("UpdateUser failed: " + err.Error())
+		return
+	}
+
+	// Parse request body
 	var req models.UpdateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.Error("Failed to decode request body: " + err.Error())
@@ -268,6 +277,27 @@ func (h *Handler) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorization logic:
+	// Admin can update any user
+	// Non-admin user can only update their own data (mail_address must match)
+	if role != "Admin" {
+		// Fetch mail address of logged-in user by userID from DB
+		var loggedInMail string
+		err = h.App.DB.QueryRow("SELECT mail_address FROM users WHERE id = $1", userID).Scan(&loggedInMail)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			logger.Error("Failed to fetch logged-in user mail: " + err.Error())
+			return
+		}
+
+		if loggedInMail != req.MailAddress {
+			http.Error(w, "Forbidden: cannot update other user's data", http.StatusForbidden)
+			logger.Warn("User " + loggedInMail + " attempted unauthorized update on " + req.MailAddress)
+			return
+		}
+	}
+
+	// Build and execute update query
 	queryResult := BuildUpdateUserQuery(req.Username, req.Role, req.Activated, req.MailAddress)
 	if queryResult.HasError {
 		http.Error(w, queryResult.ErrorMsg, http.StatusBadRequest)
@@ -296,8 +326,22 @@ func (h *Handler) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	logger := h.App.Logger
 
-	var req models.DeleteRequest
+	// Validate JWT and get user role
+	_, role, err := GetValidatedUserIDRole(r, h.App.DB, h.App.JWTSecret)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		logger.Error("DeleteUser failed: " + err.Error())
+		return
+	}
 
+	// Only admin allowed
+	if role != "Admin" {
+		http.Error(w, "Forbidden: only admin can delete users", http.StatusForbidden)
+		logger.Warn("Unauthorized delete attempt by role: " + role)
+		return
+	}
+
+	var req models.DeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.Error("Failed to decode delete user request: " + err.Error())
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
@@ -713,23 +757,21 @@ func (h *Handler) ReactivateUserHandler(w http.ResponseWriter, r *http.Request) 
 	startTime := time.Now()
 	logger := h.App.Logger
 
-	// Extract JWT claims
-	claims, err := ExtractClaimsFromRequest(r, h.App.JWTSecret)
+	// ✅ Get userID and role from JWT (validated + active user)
+	_, role, err := GetValidatedUserIDRole(r, h.App.DB, h.App.JWTSecret)
 	if err != nil {
 		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+		logger.Error("Deactivation failed: " + err.Error())
 		return
 	}
 
-	role, ok := claims["role"].(string)
-	if !ok || role != "Admin" {
+	if role != "Admin" {
 		http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
 		return
 	}
 
 	// Parse request body for mail_address
-	var req struct {
-		MailAddress string `json:"mail_address"`
-	}
+	var req models.ReactivateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MailAddress == "" {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return

@@ -36,6 +36,10 @@ type DeleteRequest struct {
 	MailAddress string `json:"mail_address"`
 }
 
+type ReactivateUserRequest struct {
+	MailAddress string `json:"mail_address"`
+}
+
 type VerifyMailAddressRequest struct {
 	MailAddress string `json:"mail_address"`
 }

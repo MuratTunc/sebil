@@ -104,9 +104,9 @@ Some endpoints in the authentication service **require a valid JWT token** to en
 
 ### ✅ Endpoints that **require** JWT Token
 
-| Endpoint                        | Method | Role Required | Description                              |
-|--------------------------------|--------|----------------|------------------------------------------|
-| `/auth/logout`                 | POST   | Any Logged-in  | Invalidate a session                     |
+| Endpoint                      | Method | Role Required | Description                               |
+|-------------------------------|--------|----------------|------------------------------------------|
+| `/auth/logout`                | POST   | Any Logged-in  | Invalidate a session                     |
 | `/auth/refresh-jwt-token`     | POST   | Any Logged-in  | Refresh JWT token                        |
 | `/auth/change-password`       | POST   | Any Logged-in  | Change password                          |
 | `/auth/deactivate-user`       | POST   | Admin only     | Deactivate user account                  |

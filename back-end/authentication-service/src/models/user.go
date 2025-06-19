@@ -40,8 +40,22 @@ type ReactivateUserRequest struct {
 	MailAddress string `json:"mail_address"`
 }
 
-type VerifyMailAddressRequest struct {
+type DeactivateUserRequest struct {
 	MailAddress string `json:"mail_address"`
+}
+
+type GenerateAuthCodeRequest struct {
+	MailAddress string `json:"mail_address"`
+}
+
+type VerifyAuthCodeRequest struct {
+	MailAddress        string `json:"mail_address"`
+	AuthenticationCode string `json:"authentication_code"`
+}
+
+type CheckAuthCodeRequest struct {
+	MailAddress        string `json:"mail_address"`
+	AuthenticationCode string `json:"authentication_code"`
 }
 
 type ChangePasswordRequest struct {

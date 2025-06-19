@@ -55,26 +55,30 @@ func (r *Routes) publicRoutes(mux *chi.Mux) {
 
 		// POST Requests with custom rate limits
 		mux.With(httprate.LimitByIP(r.Config.RateLimitRegister, r.Config.RateLimitWindowMinutes*time.Minute)).
-			Post("/register", r.Handler.RegisterUserHandler)
+			Post("/register-user", r.Handler.RegisterUserHandler)
 
 		mux.With(httprate.LimitByIP(r.Config.RateLimitLogin, r.Config.RateLimitWindowMinutes*time.Minute)).
 			Post("/login", r.Handler.LoginUserHandler)
 
-		mux.Post("/logout", r.Handler.LogoutUserHandler)
-		mux.Post("/refresh-jwt-token", r.Handler.RefreshTokenHandler)
-		mux.Post("/change-password", r.Handler.ChangePasswordHandler)
-
 		mux.With(httprate.LimitByIP(r.Config.RateLimitResetCode, r.Config.RateLimitWindowMinutes*time.Minute)).
 			Post("/send-mail-reset-code", r.Handler.SendMailResetCodeHandler)
-
-		mux.Post("/verify-mail-reset-code", r.Handler.VerifyResetCodeHandler)
 
 		mux.With(httprate.LimitByIP(r.Config.RateLimitResetPassword, r.Config.RateLimitWindowMinutes*time.Minute)).
 			Post("/reset-password", r.Handler.ResetPasswordHandler)
 
+		mux.With(httprate.LimitByIP(r.Config.RateLimitResetCode, r.Config.RateLimitWindowMinutes*time.Minute)).
+			Post("/generate-auth-code", r.Handler.GenerateAuthCodeHandler)
+
+		mux.With(httprate.LimitByIP(r.Config.RateLimitResetCode, r.Config.RateLimitWindowMinutes*time.Minute)).
+			Post("/verify-auth-code", r.Handler.VerifyAuthCodeHandler)
+
+		mux.Post("/logout", r.Handler.LogoutUserHandler)
+		mux.Post("/refresh-jwt-token", r.Handler.RefreshTokenHandler)
+		mux.Post("/change-password", r.Handler.ChangePasswordHandler)
 		mux.Post("/deactivate-user", r.Handler.DeactivateUserHandler)
 		mux.Post("/reactivate-user", r.Handler.ReactivateUserHandler)
 		mux.Post("/check-mail-exists", r.Handler.CheckMailExistHandler)
+		mux.Post("/verify-mail-reset-code", r.Handler.VerifyResetCodeHandler)
 
 		// DELETE Requests
 		mux.Delete("/delete-user", r.Handler.DeleteUserHandler)

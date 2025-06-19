@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +43,7 @@ var (
 	ErrUserNotExist       = errors.New("user does not exist or is deactivated")
 	ErrUserDBCheck        = errors.New("db error while validating user in DB")
 	ErrUserIDConversition = errors.New("userID conversion error")
+	ErrMissingUserIDClaim = errors.New("missing user_id Claim")
 )
 
 // ExtractClaimsFromRequest extracts JWT claims (MapClaims) from Authorization header
@@ -339,7 +339,6 @@ func GetValidatedUserIDRole(r *http.Request, db *sql.DB, jwtSecret string) (int,
 		return 0, "", ErrAuthorizationInvalid
 	}
 
-	// Parse JWT
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 		return []byte(jwtSecret), nil
@@ -348,29 +347,57 @@ func GetValidatedUserIDRole(r *http.Request, db *sql.DB, jwtSecret string) (int,
 		return 0, "", ErrInvalidJWT
 	}
 
-	// Get user ID
-	userIDStr, ok := claims["user_id"].(string)
+	userIDFloat, ok := claims["user_id"].(float64)
 	if !ok {
-		return 0, "", ErrMissingRoleClaim
+		return 0, "", ErrMissingUserIDClaim
 	}
-	userID, err := strconv.Atoi(userIDStr)
-	if err != nil {
-		return 0, "", ErrUserIDConversition
-	}
+	userID := int(userIDFloat)
 
-	// Get role
 	role, ok := claims["role"].(string)
 	if !ok {
 		return 0, "", ErrMissingRoleClaim
 	}
 
-	// Check user in DB
 	exists, err := isUserIDValid(db, userID)
 	if err != nil {
 		return 0, "", ErrUserDBCheck
 	}
 	if !exists {
 		return 0, "", ErrUserNotExist
+	}
+
+	return userID, role, nil
+}
+
+func GetValidatedUserRoleOnly(r *http.Request, jwtSecret string) (int, string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return 0, "", ErrAuthorizationHeader
+	}
+
+	var tokenStr string
+	fmt.Sscanf(authHeader, "Bearer %s", &tokenStr)
+	if tokenStr == "" {
+		return 0, "", ErrAuthorizationInvalid
+	}
+
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return 0, "", ErrInvalidJWT
+	}
+
+	userIDFloat, ok := claims["user_id"].(float64)
+	if !ok {
+		return 0, "", ErrMissingUserIDClaim
+	}
+	userID := int(userIDFloat)
+
+	role, ok := claims["role"].(string)
+	if !ok {
+		return 0, "", ErrMissingRoleClaim
 	}
 
 	return userID, role, nil

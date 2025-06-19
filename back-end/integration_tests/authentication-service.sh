@@ -43,9 +43,9 @@ MAIL_RESET_CODE_FOR_TEST="123456"
 
 
 # Define API URLs
-BASE_URL="http://localhost:$AUTHENTICATION_SERVICE_PORT/api/v1/"
+BASE_URL="http://localhost:$AUTHENTICATION_SERVICE_PORT/api/v1"
 HEALTH_CHECK_URL="$BASE_URL/auth/health"
-REGISTER_URL="$BASE_URL/auth/register"
+REGISTER_URL="$BASE_URL/auth/register-user"
 LAST_USER_URL="$BASE_URL/auth/last-user"
 DELETE_USER_URL="$BASE_URL/auth/delete-user"
 LOGIN_URL="$BASE_URL/auth/login"
@@ -97,7 +97,7 @@ health_check() {
 
 register_user_test() {
   echo ""
-  echo "===>TEST END POINT--->REGISTER NEW USER"
+  echo "===> TEST ENDPOINT ---> REGISTER NEW USER"
   echo
 
   local payload=$(cat <<EOF
@@ -128,13 +128,45 @@ EOF
 
   if [ "$HTTP_STATUS" -eq 201 ]; then
     echo "✅ User registered successfully"
+  elif [ "$HTTP_STATUS" -eq 409 ]; then
+    # Conflict — user exists, try deleting then retry registering
+    echo "⚠️ User already exists. Trying to delete and retry registration..."
+
+    if delete_user_test; then
+      echo "🗑️ User deleted successfully. Retrying registration..."
+
+      # Retry registration
+      REGISTER_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$REGISTER_URL" \
+        -H "Content-Type: application/json" \
+        -d "$payload")
+
+      HTTP_BODY=$(echo "$REGISTER_RESPONSE" | sed '$ d')
+      HTTP_STATUS=$(echo "$REGISTER_RESPONSE" | tail -n1)
+
+      echo "Retry Register User Response Body: $HTTP_BODY"
+      echo "Retry HTTP Status Code: $HTTP_STATUS"
+
+      if [ "$HTTP_STATUS" -eq 201 ]; then
+        echo "✅ User registered successfully on retry"
+      else
+        echo "❌ Retry registration failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
+        exit 1
+      fi
+    else
+      echo "❌ Failed to delete existing user. Cannot retry registration."
+      exit 1
+    fi
   else
     echo "❌ User registration failed with status code $HTTP_STATUS. Response: $HTTP_BODY"
     exit 1
   fi
+
   echo "----------------------------------------"
   echo
 }
+
+
+
 
 last_user_test() {
   echo ""
@@ -155,7 +187,6 @@ last_user_test() {
 
   if [ "$HTTP_STATUS" -ne 200 ]; then
     echo "❌ Failed to fetch last user with status code $HTTP_STATUS. Response: $HTTP_BODY"
-    exit 1
   fi
 
 
@@ -172,7 +203,7 @@ last_user_test() {
     echo "Expected username: $TEST_USERNAME, got: $ACTUAL_USERNAME"
     echo "Expected mail_address: $TEST_MAIL_ADDRESS, got: $ACTUAL_MAIL_ADDRESS"
     echo "Expected role: $TEST_ROLE, got: $ACTUAL_ROLE"
-    exit 1
+
   fi
   echo "----------------------------------------"
   echo
@@ -421,6 +452,7 @@ EOF
     echo "✅ Password changed successfully"
   else
     echo "❌ Failed to change password"
+    exit 1
   fi
   echo "----------------------------------------"
   echo
@@ -457,6 +489,7 @@ EOF
     echo "✅ Reset code sent to email successfully"
   else
     echo "❌ Failed to send reset code"
+    exit 1
   fi
   echo "----------------------------------------"
   echo
@@ -631,7 +664,6 @@ deactivate_user_test() {
 
   if [ -z "$HTTP_STATUS" ]; then
     echo "❌ No HTTP status received. Check the URL and the curl command."
-    exit 1
   fi
 
   if [ "$HTTP_STATUS" -eq 200 ]; then
@@ -652,17 +684,14 @@ reactivate_user_test() {
 
   if [ -z "$REACTIVATE_USER_URL" ]; then
     echo "❌ REACTIVATE_USER_URL is not set. Please define it before running the test."
-    exit 1
   fi
 
   if [ -z "$TOKEN" ]; then
     echo "❌ TOKEN is not set. Make sure login_user_test() was successful."
-    exit 1
   fi
 
   if [ -z "$TEST_MAIL_ADDRESS" ]; then
     echo "❌ TEST_MAIL_ADDRESS is not set. Make sure last_user_test() was successful."
-    exit 1
   fi
 
   echo "REQUEST URL: $REACTIVATE_USER_URL"
@@ -683,7 +712,6 @@ reactivate_user_test() {
 
   if [ -z "$HTTP_STATUS" ]; then
     echo "❌ No HTTP status received. Check the URL and the curl command."
-    exit 1
   fi
 
   if [ "$HTTP_STATUS" -eq 200 ]; then
@@ -750,12 +778,10 @@ check_mail_exist_test() {
 
   if [ -z "$CHECK_MAIL_EXIST_URL" ]; then
     echo "❌ CHECK_MAIL_EXIST_URL is not set. Please define it before running the test."
-    exit 1
   fi
 
   if [ -z "$TEST_MAIL_ADDRESS" ]; then
     echo "❌ TEST_MAIL_ADDRESS is not set."
-    exit 1
   fi
 
   echo "REQUEST URL: $CHECK_MAIL_EXIST_URL"
@@ -790,12 +816,10 @@ verify_mail_address_test() {
 
   if [ -z "$VERIFY_MAIL_URL" ]; then
     echo "❌ VERIFY_MAIL_URL is not set. Please define it before running the test."
-    exit 1
   fi
 
   if [ -z "$TEST_MAIL_ADDRESS" ]; then
     echo "❌ TEST_MAIL_ADDRESS is not set."
-    exit 1
   fi
 
   echo "REQUEST URL: $VERIFY_MAIL_URL"
@@ -825,10 +849,25 @@ verify_mail_address_test() {
 
 
 
-
+# With JWT
 delete_user_test() {
   echo ""
   echo "===> TEST ENDPOINT ---> DELETE USER BY MAIL"
+
+  if [ -z "$DELETE_USER_URL" ]; then
+    echo "❌ DELETE_USER_URL is not set. Please define it before running the test."
+    exit 1
+  fi
+
+  if [ -z "$TOKEN" ]; then
+    echo "❌ TOKEN is not set. Make sure login_user_test() was successful."
+    exit 1
+  fi
+
+  if [ -z "$TEST_MAIL_ADDRESS" ]; then
+    echo "❌ TEST_MAIL_ADDRESS is not set. Make sure last_user_test() was successful."
+    exit 1
+  fi
 
   REQUEST_TYPE="DELETE"
   REQUEST_PAYLOAD=$(cat <<EOF
@@ -840,39 +879,43 @@ EOF
 
   echo "REQUEST URL: $DELETE_USER_URL"
   echo "REQUEST TYPE: $REQUEST_TYPE"
+  echo "Authorization: Bearer $TOKEN"
   echo "REQUEST PAYLOAD: $REQUEST_PAYLOAD"
 
-  HTTP_RESPONSE=$(curl -s --fail -w "HTTPSTATUS:%{http_code}" -X $REQUEST_TYPE $DELETE_USER_URL \
+  HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" -X $REQUEST_TYPE "$DELETE_USER_URL" \
+    -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "$REQUEST_PAYLOAD")
 
-  CURL_EXIT_CODE=$?
+  HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '$ d')
+  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
 
-  RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
-  HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-
-  if [ $CURL_EXIT_CODE -ne 0 ]; then
-    echo "❌ curl command failed (exit code: $CURL_EXIT_CODE)"
-    exit 1
-  fi
-
-  echo "Delete User Response Body: $RESPONSE_BODY"
+  echo "Delete User Response Body: $HTTP_BODY"
   echo "HTTP Status Code: $HTTP_STATUS"
+
+  if [ -z "$HTTP_STATUS" ]; then
+    echo "❌ No HTTP status received. Check the URL and the curl command."
+  fi
 
   if [ "$HTTP_STATUS" -eq 200 ]; then
     echo "✅ User deleted successfully"
   else
-    echo "❌ Failed to delete user. Status: $HTTP_STATUS"
-    echo "Response: $RESPONSE_BODY"
-    exit 1
+    echo "❌ Failed to delete user. Status code: $HTTP_STATUS"
+    echo "Response: $HTTP_BODY"
   fi
+
+  echo "----------------------------------------"
+  echo
 }
+
 
 
 # Run tests
 test_start                               # 🟢 Initialize the test suite (start timer or header)
 
 health_check                             # ✅ Check if the service is running and responding
+
+login_user_test || { echo "❌ Login failed, aborting tests"; exit 1; }
 
 register_user_test                       # 🆕 Register a new user to use in subsequent tests
 
@@ -894,9 +937,9 @@ sleep 1                                  # ⏸️ Pause to ensure changes propag
 
 change_password_test                     # 🔐 Change password while authenticated (authorized endpoint)
 
-send_forgot_password_code_test          # 📧 Send a reset code to user’s email for password recovery
+send_forgot_password_code_test           # 📧 Send a reset code to user’s email for password recovery
 
-verify_mail_reset_code_test             # 🔑 Verify the mail reset code sent to the user
+verify_mail_reset_code_test              # 🔑 Verify the mail reset code sent to the user
 
 reset_password_test                      # 🔄 Reset the user’s password using verified code
 
